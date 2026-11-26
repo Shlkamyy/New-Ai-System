@@ -300,7 +300,7 @@ export const Sidebar: React.FC = React.memo(() => {
         } bg-white border-l border-[#e2eaee] flex flex-col`}
       >
         {/* Drawer Header */}
-        <div className="relative flex items-center justify-between p-4 border-b border-[#e2eaee] dark:border-[#1d2f3d]">
+        <div className="relative flex items-center justify-between px-4 py-5 border-b border-[#e2eaee] dark:border-[#1d2f3d]">
           <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#087e83] to-[#12a19c] p-1 flex items-center justify-center text-white shadow-sm flex-shrink-0">
               <svg viewBox="0 0 48 48" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">

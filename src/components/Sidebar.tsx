@@ -307,7 +307,7 @@ export const Sidebar: React.FC = React.memo(() => {
                 <path d="M16 6c-5 0-9 4-9 10 0 5 3 8 4 14 1 7 4 12 8 12 2 0 3-4 4-9 1-4 2-5 3-5s2 1 3 5c1 5 2 9 4 9 4 0 7-5 8-12 1-6 4-9 4-14 0-6-4-10-9-10-5 0-7 3-10 3s-5-3-10-3Z"/>
               </svg>
             </div>
-            <span className="font-signature text-2xl text-[#087e83] dark:text-[#2dd4bf]" dir="ltr">
+            <span className="font-signature text-2xl text-[#087e83] dark:text-[#2dd4bf] whitespace-nowrap" dir="ltr">
               Dr Shlkamy
             </span>
           </div>

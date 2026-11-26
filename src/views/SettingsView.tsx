@@ -192,8 +192,7 @@ export const SettingsView: React.FC = () => {
         { key: 'viewPatients', action: 'view', label: 'عرض المرضى', shortLabel: 'عرض', desc: 'الاطلاع على سجل وملفات المرضى' },
         { key: 'addPatients', action: 'add', label: 'إضافة مرضى', shortLabel: 'إضافة', desc: 'فتح ملف مريض جديد' },
         { key: 'editPatients', action: 'edit', label: 'تعديل مرضى', shortLabel: 'تعديل', desc: 'تعديل البيانات الأساسية والتاجات' },
-        { key: 'deletePatients', action: 'delete', label: 'حذف مرضى', shortLabel: 'حذف', desc: 'حذف ملف المريض نهائياً' },
-        { key: 'patientsOwnOnly', action: 'view', label: 'إظهار مرضى الطبيب فقط', shortLabel: 'مرضاه فقط', desc: 'إظهار المرضى الذين لديهم موعد مسجل مع هذا الطبيب، مهما كانت حالة الموعد' }
+        { key: 'deletePatients', action: 'delete', label: 'حذف مرضى', shortLabel: 'حذف', desc: 'حذف ملف المريض نهائياً' }
       ]
     },
     {
@@ -4151,7 +4150,7 @@ export const SettingsView: React.FC = () => {
                                     : 'bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100 cursor-pointer'
                                 }`}
                               >
-                                {perm.key === 'hideAdminNotes' || perm.key === 'appointmentsOwnOnly' || perm.key === 'patientsOwnOnly'
+                                {perm.key === 'hideAdminNotes' || perm.key === 'appointmentsOwnOnly'
                                   ? allowed
                                     ? '✓ مفعّل'
                                     : '✕ غير مفعّل'

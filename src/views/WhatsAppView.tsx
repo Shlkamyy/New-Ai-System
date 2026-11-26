@@ -76,6 +76,7 @@ export const WhatsAppView: React.FC = () => {
   const effectiveTab = isAdmin ? activeTab : 'queue';
 
   const [historyFilter, setHistoryFilter] = useState<'all' | 'sent' | 'dismissed'>('all');
+  const [queueSort, setQueueSort] = useState<'due_asc' | 'due_desc' | 'created_asc' | 'created_desc'>('due_asc');
   const [registerWaPatientId, setRegisterWaPatientId] = useState<string | null>(null);
   const registerWaPatient = useMemo(
     () => (registerWaPatientId ? patients.find(p => p.id === registerWaPatientId) || null : null),
@@ -97,6 +98,25 @@ export const WhatsAppView: React.FC = () => {
   // Active alerts include both pending and opened (scoped by allowed patients/branch)
   const scopedWhatsappAlerts = whatsappAlerts.filter(a => isPatientAllowed(a.patientId));
   const activeQueueAlerts = scopedWhatsappAlerts.filter(a => a.status === 'pending' || a.status === 'opened');
+  const sortedActiveQueueAlerts = useMemo(() => {
+    const getTimestamp = (value: string | undefined): number => {
+      if (!value) return Number.NaN;
+      const normalized = value.trim().replace(' ', 'T');
+      const timestamp = Date.parse(normalized);
+      return Number.isFinite(timestamp) ? timestamp : Number.NaN;
+    };
+
+    const isDueSort = queueSort.startsWith('due');
+    const direction = queueSort.endsWith('asc') ? 1 : -1;
+    return [...activeQueueAlerts].sort((a, b) => {
+      const aValue = getTimestamp(isDueSort ? a.scheduledFor : a.createdAt);
+      const bValue = getTimestamp(isDueSort ? b.scheduledFor : b.createdAt);
+      if (Number.isNaN(aValue) && Number.isNaN(bValue)) return 0;
+      if (Number.isNaN(aValue)) return 1;
+      if (Number.isNaN(bValue)) return -1;
+      return (aValue - bValue) * direction;
+    });
+  }, [activeQueueAlerts, queueSort]);
   const historyAlerts = scopedWhatsappAlerts.filter(a => {
     if (historyFilter === 'sent') return a.status === 'sent';
     if (historyFilter === 'dismissed') return a.status === 'dismissed';
@@ -336,8 +356,26 @@ export const WhatsAppView: React.FC = () => {
       {/* TAB 1: PENDING & OPENED ALERTS QUEUE */}
       {effectiveTab === 'queue' && (
         <div className="space-y-3">
+          {activeQueueAlerts.length > 0 && (
+            <div className="flex items-center justify-between gap-2 flex-wrap px-1">
+              <label htmlFor="whatsapp-alert-sort" className="text-xs font-extrabold text-slate-600">
+                ترتيب التنبيهات
+              </label>
+              <select
+                id="whatsapp-alert-sort"
+                value={queueSort}
+                onChange={e => setQueueSort(e.target.value as typeof queueSort)}
+                className="max-w-full px-3 py-2 rounded-xl bg-white border border-[#dce8eb] text-xs font-bold text-[#172f3d] shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              >
+                <option value="due_asc">تاريخ الاستحقاق — الأقدم أولاً</option>
+                <option value="due_desc">تاريخ الاستحقاق — الأحدث أولاً</option>
+                <option value="created_asc">تاريخ الإنشاء — الأقدم أولاً</option>
+                <option value="created_desc">تاريخ الإنشاء — الأحدث أولاً</option>
+              </select>
+            </div>
+          )}
           {activeQueueAlerts.length > 0 ? (
-            activeQueueAlerts.map(alert => {
+            sortedActiveQueueAlerts.map(alert => {
               const isOpened = alert.status === 'opened';
               const patient = patients.find(p => p.id === alert.patientId);
               const targetWaPhone = getPreferredPatientWhatsAppPhone(patient) || alert.patientPhone;

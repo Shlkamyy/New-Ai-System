@@ -28,13 +28,17 @@ import {
   PhoneOff,
   FileCheck2,
   Clock,
-  Plus
+  Plus,
+  Pencil,
+  Save
 } from 'lucide-react';
 import {
   addDaysToYmd,
   convertArabicDigitsToWestern,
   formatRelativeCalendarDaysArabic,
+  formatTimeToArabicPeriod,
   getArabicWeekdayName,
+  getCairoNowParts,
   getRelativeTimeBadgeClass,
   matchArabicTerms,
   matchPhone,
@@ -60,10 +64,17 @@ import {
   FINISHED_WORK_DEFAULT_QUOTA,
   FINISHED_WORK_TASK_TITLE,
   computeFinishedWorkTaskProgress,
-  formatPostponeDaysArabic
+  formatPostponeDaysArabic,
+  getCairoDateStringFromIso
 } from '../utils/finishedWork';
 import { computeFeedbackOutcomesForVisitDate } from '../utils/feedback';
-import { Appointment, AppointmentStatus, FinishedWorkActionType, PatientFollowUpLogEntry } from '../types/clinic';
+import {
+  Appointment,
+  AppointmentStatus,
+  FinishedWorkActionType,
+  FollowUpActionSource,
+  PatientFollowUpLogEntry
+} from '../types/clinic';
 import { ColoredSelect } from '../components/ColoredSelect';
 import { RegisterWhatsAppModal } from '../components/RegisterWhatsAppModal';
 
@@ -129,77 +140,244 @@ function shiftAnchorByMonth(anchorYmd: string, deltaMonths: number): string {
   return `${outY}-${outM}-${outD}`;
 }
 
+function isSystemAutoFollowUpNote(note?: string): boolean {
+  const trimmed = (note || '').trim();
+  if (!trimmed) return true;
+  if (trimmed === 'تم التواصل — خلص شغل') return true;
+  if (trimmed === 'إغلاق الملف — غير مهتم') return true;
+  if (trimmed.startsWith('لا يمكن التواصل — تأجيل')) return true;
+  if (trimmed.startsWith('تحديث تلقائي')) return true;
+  return false;
+}
+
+function formatCairoCompletionDateTime(
+  isoTimestamp?: string,
+  fallbackYmd?: string
+): string {
+  if (isoTimestamp) {
+    const dt = new Date(isoTimestamp);
+    if (!isNaN(dt.getTime())) {
+      const cairo = getCairoNowParts(dt);
+      const weekday = getArabicWeekdayName(cairo.dateStr);
+      const timeAr = formatTimeToArabicPeriod(cairo.timeStr);
+      return `${weekday ? `${weekday} ` : ''}${cairo.dateStr} · الساعة ${timeAr}`;
+    }
+  }
+  const cleanYmd = (fallbackYmd || '').trim().slice(0, 10);
+  if (cleanYmd) {
+    const weekday = getArabicWeekdayName(cleanYmd);
+    return `${weekday ? `${weekday} ` : ''}${cleanYmd}`;
+  }
+  return '';
+}
+
+function resolveActionOriginBadge(
+  source: FollowUpActionSource | undefined,
+  fwInfo: any,
+  todayLogEntry: PatientFollowUpLogEntry | undefined,
+  feedbackOutcome: string | undefined
+): { label: string; tone: 'inside' | 'outside' | 'legacy' } {
+  switch (source) {
+    case 'task_card_button':
+      return { label: 'من زرار داخل كارت المهمة', tone: 'inside' };
+    case 'task_card_dropdown':
+      return { label: 'من قائمة الحالة داخل كارت المهمة', tone: 'inside' };
+    case 'appointments_schedule':
+      return { label: 'من برا صفحة المهمة · جدول المواعيد', tone: 'outside' };
+    case 'dashboard_schedule':
+      return { label: 'من برا صفحة المهمة · لوحة التحكم', tone: 'outside' };
+    case 'patients_list':
+      return { label: 'من برا صفحة المهمة · قائمة المرضى', tone: 'outside' };
+    case 'patient_detail':
+      return { label: 'من برا صفحة المهمة · ملف المريض', tone: 'outside' };
+    case 'followup_outside':
+      return { label: 'من برا صفحة المهمة · حالات المتابعة', tone: 'outside' };
+    case 'staff_alerts':
+      return { label: 'من برا صفحة المهمة · تنبيهات الموظفين', tone: 'outside' };
+    case 'quick_action':
+      return { label: 'من برا صفحة المهمة · الإضافة السريعة', tone: 'outside' };
+    default:
+      break;
+  }
+
+  if (fwInfo?.todayAction) {
+    if (todayLogEntry?.taskType === 'finished_work') {
+      return { label: 'من زرار داخل كارت المهمة', tone: 'inside' };
+    }
+    if (fwInfo.todayAction === 'booked_appt') {
+      const notes = (todayLogEntry?.notes || '').trim();
+      if (
+        notes.startsWith('تحديث تلقائي عند إعادة تفعيل الموعد') ||
+        notes.startsWith('تحديث تلقائي عند تعديل الموعد')
+      ) {
+        return { label: 'من برا صفحة المهمة · جدول المواعيد', tone: 'outside' };
+      }
+      return { label: 'تحديد ميعاد جديد (سجل سابق)', tone: 'legacy' };
+    }
+    if (fwInfo.todayAction === 'finished' || fwInfo.todayAction === 'closed_file') {
+      return { label: 'من برا صفحة المهمة · حالات المتابعة', tone: 'outside' };
+    }
+  }
+
+  if (feedbackOutcome === 'done' || feedbackOutcome === 'not_done') {
+    return { label: 'من زرار داخل كارت المهمة', tone: 'inside' };
+  }
+
+  return { label: 'من صفحة حالات المتابعة', tone: 'outside' };
+}
+
 function getStaffActionDescription(
   patId: string,
   fwInfo: any,
   feedbackOutcome: string | undefined,
   todayLogEntry: PatientFollowUpLogEntry | undefined,
+  todayBookedApptOverride: Appointment | undefined,
   appointments: Appointment[],
   anchorDate: string
-): { title: string; detail: string; employeeName?: string } | null {
-  const todayBookedAppt = appointments.find(
-    a => a.patientId === patId && ((a.createdAt && a.createdAt.slice(0, 10) === anchorDate) || a.date === anchorDate)
+): {
+  title: string;
+  detail: string;
+  employeeName?: string;
+  completedDateTime: string;
+  originLabel: string;
+  originTone: 'inside' | 'outside' | 'legacy';
+  userNote?: string;
+  editableLogId?: string;
+} | null {
+  const todayBookedAppt =
+    todayBookedApptOverride ||
+    appointments
+      .filter(
+        a =>
+          a.patientId === patId &&
+          a.status !== 'cancelled' &&
+          a.status !== 'no_show' &&
+          ((a.createdAt &&
+            getCairoDateStringFromIso(a.createdAt) === anchorDate &&
+            (a.date || '').slice(0, 10) >= anchorDate) ||
+            (a.date || '').slice(0, 10) > anchorDate)
+      )
+      .sort((a, b) => (Date.parse(b.createdAt || '') || 0) - (Date.parse(a.createdAt || '') || 0))[0];
+
+  const effectiveSource: FollowUpActionSource | undefined =
+    todayLogEntry?.actionSource || todayBookedAppt?.bookingSource;
+  const origin = resolveActionOriginBadge(effectiveSource, fwInfo, todayLogEntry, feedbackOutcome);
+  const employeeName = todayLogEntry?.changedBy || todayBookedAppt?.createdBy;
+  const rawNote = (todayLogEntry?.notes || '').trim();
+  const userNote = rawNote && !isSystemAutoFollowUpNote(rawNote) ? rawNote : undefined;
+  const completedDateTime = formatCairoCompletionDateTime(
+    todayLogEntry?.timestamp || todayBookedAppt?.createdAt,
+    todayLogEntry?.actionDate || anchorDate
   );
+
+  const isFromInsideButton = origin.tone === 'inside' && effectiveSource !== 'task_card_dropdown';
 
   if (fwInfo?.todayAction === 'finished') {
     return {
-      title: 'اتكت على زر (خلص شغل)',
-      detail: todayLogEntry?.notes ? `تم إنجاز المهمة وكتبت نوت: "${todayLogEntry.notes}"` : 'تم إنجاز زيارة المريض بنجاح',
-      employeeName: todayLogEntry?.changedBy
+      title: isFromInsideButton ? 'خلص شغل (زر الكارت)' : 'تغيير الحالة إلى (خلص شغل)',
+      detail: 'تم إنجاز متابعة المريض وإنهاء مهمته',
+      employeeName,
+      completedDateTime,
+      originLabel: origin.label,
+      originTone: origin.tone,
+      userNote,
+      editableLogId: todayLogEntry?.id
     };
   }
   if (fwInfo?.todayAction === 'closed_file' || fwInfo?.todayAction === 'not_interested') {
     return {
-      title: 'اتكت على زر (إغلاق الملف / غير مهتم)',
-      detail: todayLogEntry?.notes ? `تم إغلاق الملف وكتبت نوت: "${todayLogEntry.notes}"` : 'تم إغلاق ملف المريض',
-      employeeName: todayLogEntry?.changedBy
+      title: isFromInsideButton ? 'إغلاق الملف / غير مهتم (زر الكارت)' : 'تغيير الحالة إلى (غير مهتم)',
+      detail: 'تم إغلاق ملف المريض',
+      employeeName,
+      completedDateTime,
+      originLabel: origin.label,
+      originTone: origin.tone,
+      userNote,
+      editableLogId: todayLogEntry?.id
     };
   }
   if (fwInfo?.todayAction === 'postpone_week') {
     const daysLabel = fwInfo.lastDeferral?.daysLabel || 'أسبوع';
     return {
-      title: 'اتكت على زر (تأجيل المتابعة)',
-      detail: `وقامت بتحديد تأجيل لمدة ${daysLabel}${todayLogEntry?.notes ? ` مع كتابة نوت: "${todayLogEntry.notes}"` : ''}`,
-      employeeName: todayLogEntry?.changedBy
+      title: 'تأجيل المتابعة (زر الكارت)',
+      detail: `تم تحديد تأجيل لمدة ${daysLabel}`,
+      employeeName,
+      completedDateTime,
+      originLabel: origin.label,
+      originTone: origin.tone,
+      userNote,
+      editableLogId: todayLogEntry?.id
     };
   }
   if (fwInfo?.todayAction === 'unreachable') {
     const attempt = fwInfo.unreachableAttempts || 1;
     return {
-      title: 'اتكت على زر (لا يمكن التواصل)',
-      detail: `(المحاولة رقم ${attempt.toLocaleString('ar-EG')})${todayLogEntry?.notes ? ` مع كتابة نوت: "${todayLogEntry.notes}"` : ''}`,
-      employeeName: todayLogEntry?.changedBy
+      title: 'لا يمكن التواصل (زر الكارت)',
+      detail: `تأجيل ٣ أيام (المحاولة رقم ${attempt.toLocaleString('ar-EG')})`,
+      employeeName,
+      completedDateTime,
+      originLabel: origin.label,
+      originTone: origin.tone,
+      userNote,
+      editableLogId: todayLogEntry?.id
     };
   }
-  if (todayBookedAppt || fwInfo?.todayAction === 'booked_appt') {
+  if (fwInfo?.todayAction === 'booked_appt' || todayBookedAppt) {
     const apptDate = todayBookedAppt?.date || anchorDate;
-    const apptTime = todayBookedAppt?.time ? ` الساعة ${todayBookedAppt.time}` : '';
+    const apptTime = todayBookedAppt?.time
+      ? ` الساعة ${formatTimeToArabicPeriod(todayBookedAppt.time)}`
+      : '';
     const proc = todayBookedAppt?.procedureType ? ` (${todayBookedAppt.procedureType})` : '';
     return {
-      title: 'اتكت على زر (تحديد ميعاد جديد)',
-      detail: `وحددت ميعاد بتاريخ ${apptDate}${apptTime}${proc}${todayLogEntry?.notes ? ` مع كتابة نوت: "${todayLogEntry.notes}"` : ''}`,
-      employeeName: todayLogEntry?.changedBy
+      title:
+        effectiveSource === 'task_card_button'
+          ? 'تحديد ميعاد جديد (من الكارت)'
+          : 'تحديد ميعاد جديد',
+      detail: `تم حجز موعد بتاريخ ${apptDate}${apptTime}${proc}`,
+      employeeName,
+      completedDateTime,
+      originLabel: origin.label,
+      originTone: origin.tone,
+      userNote,
+      editableLogId: todayLogEntry?.id
     };
   }
   if (feedbackOutcome === 'done') {
     return {
-      title: 'اتكت على زر (تم الفيدباك)',
-      detail: todayLogEntry?.notes ? `تم إتمام فيدباك الزيارة وكتبت نوت: "${todayLogEntry.notes}"` : 'تم إتمام فيدباك الزيارة',
-      employeeName: todayLogEntry?.changedBy
+      title: 'تم الفيدباك',
+      detail: 'تم إتمام فيدباك الزيارة',
+      employeeName,
+      completedDateTime,
+      originLabel: origin.label,
+      originTone: origin.tone,
+      userNote,
+      editableLogId: todayLogEntry?.id
     };
   }
   if (feedbackOutcome === 'not_done') {
     return {
-      title: 'اتكت على زر (لم تتم المهمة)',
-      detail: todayLogEntry?.notes ? `وكتبت نوت: "${todayLogEntry.notes}"` : 'تم تسجيل عدم إتمام المهمة',
-      employeeName: todayLogEntry?.changedBy
+      title: 'لم تتم المهمة',
+      detail: 'تم تسجيل عدم إتمام المهمة',
+      employeeName,
+      completedDateTime,
+      originLabel: origin.label,
+      originTone: origin.tone,
+      userNote,
+      editableLogId: todayLogEntry?.id
     };
   }
   if (todayLogEntry) {
     return {
-      title: `اتكت على إجراء: ${todayLogEntry.newStatus || 'تحديث'}`,
-      detail: todayLogEntry.notes ? `وكتبت نوت: "${todayLogEntry.notes}"` : 'تم تحديث حالة المريض',
-      employeeName: todayLogEntry?.changedBy
+      title: `تحديث الحالة إلى: ${todayLogEntry.newStatus || 'تحديث'}`,
+      detail: todayLogEntry.previousStatus
+        ? `من (${todayLogEntry.previousStatus}) إلى (${todayLogEntry.newStatus})`
+        : 'تم تحديث حالة المريض',
+      employeeName,
+      completedDateTime,
+      originLabel: origin.label,
+      originTone: origin.tone,
+      userNote,
+      editableLogId: todayLogEntry.id
     };
   }
   return null;
@@ -275,6 +453,8 @@ export const PatientFollowUpView: React.FC = () => {
   const [pageSize, setPageSize] = useState<number>(25);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [justUpdatedId, setJustUpdatedId] = useState<string | null>(null);
+  const [editingLogNoteId, setEditingLogNoteId] = useState<string | null>(null);
+  const [editingLogNoteDraft, setEditingLogNoteDraft] = useState('');
   const [registerWaPatientId, setRegisterWaPatientId] = useState<string | null>(null);
   const registerWaPatient = useMemo(
     () => (registerWaPatientId ? patients.find(p => p.id === registerWaPatientId) || null : null),
@@ -711,6 +891,53 @@ export const PatientFollowUpView: React.FC = () => {
     [patientFollowUpLogs]
   );
 
+  const appointmentById = useMemo(
+    () => new Map(appointments.map(a => [a.id, a])),
+    [appointments]
+  );
+
+  const feedbackLogByPatientForAnchor = useMemo(() => {
+    const map = new Map<string, PatientFollowUpLogEntry>();
+    if (!anchorDate) return map;
+    const bestTsByPat = new Map<string, number>();
+    for (let i = 0; i < patientFollowUpLogs.length; i++) {
+      const log = patientFollowUpLogs[i];
+      if (log.reverted || !log.patientId) continue;
+      if (log.feedbackDate !== anchorDate) continue;
+      if (log.feedbackOutcome !== 'done' && log.feedbackOutcome !== 'not_done') continue;
+      const ts = Date.parse(log.timestamp) || 0;
+      const prevTs = bestTsByPat.get(log.patientId);
+      if (prevTs === undefined || ts >= prevTs) {
+        bestTsByPat.set(log.patientId, ts);
+        map.set(log.patientId, log);
+      }
+    }
+    return map;
+  }, [patientFollowUpLogs, anchorDate]);
+
+  const canEditLogNote = (log?: PatientFollowUpLogEntry): boolean => {
+    if (!log || currentUser.isDisabled) return false;
+    return Boolean(
+      isAdmin || currentUser.permissions?.editPatients || log.changedById === currentUser.id
+    );
+  };
+
+  const handleStartEditLogNote = (log: PatientFollowUpLogEntry) => {
+    if (!canEditLogNote(log)) return;
+    setEditingLogNoteId(log.id);
+    setEditingLogNoteDraft(log.notes || '');
+  };
+
+  const handleSaveEditedLogNote = (logId: string, patientId: string) => {
+    updatePatientFollowUpLog(logId, { notes: editingLogNoteDraft });
+    setEditingLogNoteId(null);
+    setEditingLogNoteDraft('');
+    setJustUpdatedId(patientId);
+    window.setTimeout(() => {
+      setJustUpdatedId(prev => (prev === patientId ? null : prev));
+    }, 1800);
+  };
+
   const fwCompletedForDayCount = useMemo(() => {
     if (!finishedWorkMode || !finishedWorkProgress) return 0;
     let count = 0;
@@ -953,6 +1180,7 @@ export const PatientFollowUpView: React.FC = () => {
         taskType: 'finished_work',
         finishedWorkAction: fwAction,
         actionDate: anchorDate || todayYmd,
+        actionSource: 'task_card_dropdown',
         notes:
           fwAction === 'finished'
             ? 'تم التواصل — خلص شغل'
@@ -963,10 +1191,13 @@ export const PatientFollowUpView: React.FC = () => {
       }
     } else if (finishedWorkMode) {
       changePatientFollowUpStatus(patientId, nextStatus, {
-        actionDate: anchorDate || todayYmd
+        actionDate: anchorDate || todayYmd,
+        actionSource: 'task_card_dropdown'
       });
     } else {
-      changePatientFollowUpStatus(patientId, nextStatus);
+      changePatientFollowUpStatus(patientId, nextStatus, {
+        actionSource: 'followup_outside'
+      });
     }
     setJustUpdatedId(patientId);
     window.setTimeout(() => {
@@ -1032,6 +1263,7 @@ export const PatientFollowUpView: React.FC = () => {
       taskType: 'finished_work',
       finishedWorkAction: 'finished',
       actionDate: anchorDate || todayYmd,
+      actionSource: 'task_card_button',
       notes: 'تم التواصل — خلص شغل'
     });
     if (logId) {
@@ -1048,6 +1280,7 @@ export const PatientFollowUpView: React.FC = () => {
       finishedWorkAttempt: attemptNumber,
       snoozeUntilDate,
       actionDate: evalYmd,
+      actionSource: 'task_card_button',
       notes: `لا يمكن التواصل — تأجيل ٣ أيام (المحاولة رقم ${attemptNumber.toLocaleString('ar-EG')})`
     });
     if (logId) {
@@ -1097,7 +1330,8 @@ export const PatientFollowUpView: React.FC = () => {
   ) => {
     const createdLogId = changePatientFollowUpStatus(patientId, 'فيدباك', {
       feedbackOutcome: 'done',
-      feedbackDate: anchorDate
+      feedbackDate: anchorDate,
+      actionSource: 'task_card_button'
     });
     setJustUpdatedId(patientId);
     window.setTimeout(() => {
@@ -1214,7 +1448,8 @@ export const PatientFollowUpView: React.FC = () => {
           audioDataUrl: recordedAudioUrl,
           audioDurationSeconds: recordedDuration,
           feedbackOutcome: 'done',
-          feedbackDate: anchorDate
+          feedbackDate: anchorDate,
+          actionSource: 'task_card_button'
         });
       }
     } else if (feedbackModal.mode === 'fw_postpone_week') {
@@ -1233,7 +1468,8 @@ export const PatientFollowUpView: React.FC = () => {
           finishedWorkAction: 'postpone_week',
           finishedWorkAttempt: attempt,
           snoozeUntilDate,
-          actionDate: evalYmd
+          actionDate: evalYmd,
+          actionSource: 'task_card_button'
         }
       );
       if (createdId) {
@@ -1252,7 +1488,8 @@ export const PatientFollowUpView: React.FC = () => {
           taskType: 'finished_work',
           finishedWorkAction: 'closed_file',
           finishedWorkAttempt: attempt,
-          actionDate: evalYmd
+          actionDate: evalYmd,
+          actionSource: 'task_card_button'
         }
       );
       if (createdId) {
@@ -1268,6 +1505,7 @@ export const PatientFollowUpView: React.FC = () => {
           audioDurationSeconds: recordedDuration,
           feedbackOutcome: 'not_done',
           feedbackDate: anchorDate,
+          actionSource: 'task_card_button',
           keepCurrentStatus: true
         }
       );
@@ -1906,6 +2144,8 @@ export const PatientFollowUpView: React.FC = () => {
                         )}
                         {fwInfo?.todayAction && (() => {
                           const todayLogEntry = fwInfo.todayLogId ? followUpLogById.get(fwInfo.todayLogId) : undefined;
+                          const todayApptEntry = fwInfo.todayApptId ? appointmentById.get(fwInfo.todayApptId) : undefined;
+                          const actorName = todayLogEntry?.changedBy || todayApptEntry?.createdBy;
                           const actionBadgeMap: Record<string, { label: string; cls: string }> = {
                             finished: { label: 'منتهية: خلص شغل', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
                             booked_appt: { label: 'منتهية: تم تحديد ميعاد جديد', cls: 'bg-sky-50 text-sky-700 border-sky-200' },
@@ -1920,8 +2160,8 @@ export const PatientFollowUpView: React.FC = () => {
                             <span className={`inline-flex items-center gap-1 text-[10px] font-extrabold border px-2.5 py-0.5 rounded-full ${meta.cls}`}>
                               <CheckCircle2 className="w-3 h-3" />
                               <span>{meta.label}</span>
-                              {todayLogEntry?.changedBy && (
-                                <span className="opacity-80">· {todayLogEntry.changedBy}</span>
+                              {actorName && (
+                                <span className="opacity-80">· {actorName}</span>
                               )}
                             </span>
                           );
@@ -1948,32 +2188,125 @@ export const PatientFollowUpView: React.FC = () => {
 
                       {/* Staff Performed Action Details Box */}
                       {(() => {
-                        const todayLogEntry = fwInfo?.todayLogId ? followUpLogById.get(fwInfo.todayLogId) : undefined;
+                        const todayLogEntry = fwInfo?.todayLogId
+                          ? followUpLogById.get(fwInfo.todayLogId)
+                          : feedbackMode && !finishedWorkMode
+                          ? feedbackLogByPatientForAnchor.get(pat.id)
+                          : undefined;
+                        const todayApptEntry = fwInfo?.todayApptId
+                          ? appointmentById.get(fwInfo.todayApptId)
+                          : undefined;
                         const staffActionInfo = getStaffActionDescription(
                           pat.id,
                           fwInfo,
                           feedbackOutcome,
                           todayLogEntry,
+                          todayApptEntry,
                           appointments,
                           anchorDate
                         );
                         if (!staffActionInfo) return null;
+                        const originBadgeCls =
+                          staffActionInfo.originTone === 'inside'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            : staffActionInfo.originTone === 'outside'
+                            ? 'bg-amber-50 text-amber-900 border-amber-300'
+                            : 'bg-slate-100 text-slate-700 border-slate-200';
+                        const isEditingThisNote =
+                          Boolean(staffActionInfo.editableLogId) &&
+                          editingLogNoteId === staffActionInfo.editableLogId;
+
                         return (
-                          <div className="p-3 rounded-2xl bg-[#e7f5f2]/80 border border-[#b4ded6] text-xs space-y-1 mt-1">
-                            <div className="flex items-center justify-between gap-2 font-extrabold text-[#087e83]">
+                          <div className="p-3 rounded-2xl bg-[#e7f5f2]/80 border border-[#b4ded6] text-xs space-y-1.5 mt-1">
+                            <div className="flex items-center justify-between gap-2 flex-wrap font-extrabold text-[#087e83]">
                               <span className="flex items-center gap-1.5">
                                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                                 <span>إجراء الموظفة: {staffActionInfo.title}</span>
                               </span>
-                              {staffActionInfo.employeeName && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-slate-700 border border-[#b4ded6]">
-                                  بواسطة: {staffActionInfo.employeeName}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span
+                                  className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${originBadgeCls}`}
+                                >
+                                  {staffActionInfo.originLabel}
                                 </span>
-                              )}
+                                {staffActionInfo.employeeName && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-slate-700 border border-[#b4ded6]">
+                                    بواسطة: {staffActionInfo.employeeName}
+                                  </span>
+                                )}
+                              </div>
                             </div>
+
+                            {staffActionInfo.completedDateTime && (
+                              <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#087e83] pr-5">
+                                <Clock className="w-3.5 h-3.5 shrink-0" />
+                                <span>تاريخ وساعة الإنجاز: {staffActionInfo.completedDateTime}</span>
+                              </div>
+                            )}
+
                             <p className="text-slate-800 font-bold pr-5">
                               {staffActionInfo.detail}
                             </p>
+
+                            {staffActionInfo.userNote && todayLogEntry && (
+                              <div className="mt-1 mr-5 p-2.5 rounded-xl bg-white/95 border border-[#b4ded6] space-y-2">
+                                {isEditingThisNote ? (
+                                  <div className="space-y-2">
+                                    <label className="block text-[10px] font-extrabold text-[#087e83]">
+                                      تعديل نوت الموظفة:
+                                    </label>
+                                    <textarea
+                                      value={editingLogNoteDraft}
+                                      onChange={e => setEditingLogNoteDraft(e.target.value)}
+                                      rows={2}
+                                      maxLength={1000}
+                                      placeholder="اكتب الملاحظة..."
+                                      className="w-full px-3 py-2 rounded-xl border border-[#b4ded6] bg-white text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-[#087e83]/30"
+                                    />
+                                    <div className="flex items-center justify-end gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingLogNoteId(null);
+                                          setEditingLogNoteDraft('');
+                                        }}
+                                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                      >
+                                        <X className="w-3 h-3" />
+                                        <span>إلغاء</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleSaveEditedLogNote(todayLogEntry.id, pat.id)
+                                        }
+                                        className="px-2.5 py-1 rounded-lg bg-[#087e83] hover:bg-[#06686c] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                      >
+                                        <Save className="w-3 h-3" />
+                                        <span>حفظ التعديل</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-start justify-between gap-2">
+                                    <p className="text-slate-800 font-semibold leading-relaxed">
+                                      <span className="text-[#087e83] font-extrabold">نوت الموظفة: </span>
+                                      &quot;{staffActionInfo.userNote}&quot;
+                                    </p>
+                                    {canEditLogNote(todayLogEntry) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleStartEditLogNote(todayLogEntry)}
+                                        className="px-2 py-1 rounded-lg bg-[#e7f5f2] hover:bg-[#d5eee8] text-[#087e83] text-[10px] font-extrabold flex items-center gap-1 shrink-0 cursor-pointer transition-colors"
+                                      >
+                                        <Pencil className="w-3 h-3" />
+                                        <span>تعديل النوت</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         );
                       })()}
@@ -2185,28 +2518,84 @@ export const PatientFollowUpView: React.FC = () => {
                           </span>
                           {fwInfo.currentCycleLogs
                             .filter(l => l.notes || l.audioDataUrl)
-                            .map(log => (
-                              <div
-                                key={log.id}
-                                className="p-2 rounded-xl bg-white border border-slate-200 text-xs space-y-1.5"
-                              >
-                                <div className="flex items-center justify-between gap-2 text-[10px] text-slate-400 font-bold">
-                                  <span>{log.changedBy}</span>
-                                  <span className="font-mono">{log.actionDate || log.timestamp.slice(0, 10)}</span>
-                                </div>
-                                {log.notes && <p className="text-slate-700 font-semibold">{log.notes}</p>}
-                                {log.audioDataUrl && (
-                                  <div className="flex items-center gap-2">
-                                    <audio controls src={log.audioDataUrl} className="h-8 w-full max-w-xs" />
-                                    {log.audioDurationSeconds !== undefined && (
-                                      <span className="text-[10px] font-mono font-bold text-[#087e83] whitespace-nowrap">
-                                        ({log.audioDurationSeconds} ث)
-                                      </span>
-                                    )}
+                            .map(log => {
+                              const isEditingCycleNote = editingLogNoteId === log.id;
+                              const cycleDateTime = formatCairoCompletionDateTime(
+                                log.timestamp,
+                                log.actionDate
+                              );
+                              return (
+                                <div
+                                  key={log.id}
+                                  className="p-2 rounded-xl bg-white border border-slate-200 text-xs space-y-1.5"
+                                >
+                                  <div className="flex items-center justify-between gap-2 text-[10px] text-slate-400 font-bold flex-wrap">
+                                    <span>{log.changedBy}</span>
+                                    <span className="font-mono">
+                                      {cycleDateTime || log.actionDate || log.timestamp.slice(0, 10)}
+                                    </span>
                                   </div>
-                                )}
-                              </div>
-                            ))}
+                                  {isEditingCycleNote ? (
+                                    <div className="space-y-2">
+                                      <textarea
+                                        value={editingLogNoteDraft}
+                                        onChange={e => setEditingLogNoteDraft(e.target.value)}
+                                        rows={2}
+                                        maxLength={1000}
+                                        className="w-full px-2.5 py-1.5 rounded-xl border border-[#b4ded6] bg-white text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-[#087e83]/30"
+                                      />
+                                      <div className="flex items-center justify-end gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setEditingLogNoteId(null);
+                                            setEditingLogNoteDraft('');
+                                          }}
+                                          className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                                        >
+                                          <X className="w-3 h-3" />
+                                          <span>إلغاء</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSaveEditedLogNote(log.id, pat.id)}
+                                          className="px-2 py-1 rounded-lg bg-[#087e83] hover:bg-[#06686c] text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                                        >
+                                          <Save className="w-3 h-3" />
+                                          <span>حفظ التعديل</span>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    log.notes && (
+                                      <div className="flex items-start justify-between gap-2">
+                                        <p className="text-slate-700 font-semibold">{log.notes}</p>
+                                        {canEditLogNote(log) && !isSystemAutoFollowUpNote(log.notes) && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleStartEditLogNote(log)}
+                                            className="px-2 py-0.5 rounded-lg bg-[#e7f5f2] hover:bg-[#d5eee8] text-[#087e83] text-[10px] font-extrabold flex items-center gap-1 shrink-0 cursor-pointer"
+                                          >
+                                            <Pencil className="w-2.5 h-2.5" />
+                                            <span>تعديل</span>
+                                          </button>
+                                        )}
+                                      </div>
+                                    )
+                                  )}
+                                  {log.audioDataUrl && (
+                                    <div className="flex items-center gap-2">
+                                      <audio controls src={log.audioDataUrl} className="h-8 w-full max-w-xs" />
+                                      {log.audioDurationSeconds !== undefined && (
+                                        <span className="text-[10px] font-mono font-bold text-[#087e83] whitespace-nowrap">
+                                          ({log.audioDurationSeconds} ث)
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                         </div>
                       )}
                     </div>
@@ -2280,7 +2669,10 @@ export const PatientFollowUpView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() =>
-                          setIsQuickActionOpen(true, 'appointment', { patientId: pat.id })
+                          setIsQuickActionOpen(true, 'appointment', {
+                            patientId: pat.id,
+                            source: 'task_card_button'
+                          })
                         }
                         className="py-2.5 px-3 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                       >

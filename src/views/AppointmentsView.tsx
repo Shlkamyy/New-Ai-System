@@ -169,10 +169,14 @@ export const AppointmentsView: React.FC = () => {
       const h = Math.floor(clamped / 60);
       const m = clamped % 60;
       const time24 = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-      updateAppointment(draft.apptId, {
-        time: time24,
-        durationMinutes: draft.draftDurationMin
-      });
+      updateAppointment(
+        draft.apptId,
+        {
+          time: time24,
+          durationMinutes: draft.draftDurationMin
+        },
+        'appointments_schedule'
+      );
     }
     draftApptEditRef.current = null;
     setDraftApptEdit(null);
@@ -454,7 +458,8 @@ export const AppointmentsView: React.FC = () => {
           date: currentDate,
           time: minutesToTime24(chosenMinute),
           unitId: selectedUnitFilter !== 'all' ? selectedUnitFilter : undefined,
-          doctorId: selectedDoctorFilter !== 'all' ? selectedDoctorFilter : undefined
+          doctorId: selectedDoctorFilter !== 'all' ? selectedDoctorFilter : undefined,
+          source: 'appointments_schedule'
         });
         return;
       }
@@ -821,7 +826,7 @@ export const AppointmentsView: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setOpenApptMenuKey(null);
-                  setIsQuickActionOpen(true, 'appointment', { appointmentId: appt.id });
+                  setIsQuickActionOpen(true, 'appointment', { appointmentId: appt.id, source: 'appointments_schedule' });
                 }}
                 className="w-full px-3 py-2 text-right hover:bg-[#f0f8f6] hover:text-[#087e83] flex items-center gap-2 transition-colors cursor-pointer"
               >
@@ -1165,7 +1170,7 @@ export const AppointmentsView: React.FC = () => {
           {canAddAppointments && (
             <button
               type="button"
-              onClick={() => setIsQuickActionOpen(true, 'appointment', { date: currentDate })}
+              onClick={() => setIsQuickActionOpen(true, 'appointment', { date: currentDate, source: 'appointments_schedule' })}
               className="px-3.5 py-2 rounded-xl bg-[#087e83] hover:bg-[#06686c] text-white font-bold text-xs flex items-center gap-1.5 shadow-sm"
             >
               <Plus className="w-4 h-4" />
@@ -1377,7 +1382,8 @@ export const AppointmentsView: React.FC = () => {
                             date: currentDate,
                             time: hourTimeStr,
                             unitId: selectedUnitFilter !== 'all' ? selectedUnitFilter : undefined,
-                            doctorId: selectedDoctorFilter !== 'all' ? selectedDoctorFilter : undefined
+                            doctorId: selectedDoctorFilter !== 'all' ? selectedDoctorFilter : undefined,
+                            source: 'appointments_schedule'
                           })
                         }
                         className="w-full text-[11px] text-[#087e83] hover:text-white font-bold bg-[#e7f5f2] hover:bg-[#087e83] border border-[#c7e6de] py-1.5 px-2 rounded-xl flex items-center justify-center gap-1 transition-colors cursor-pointer"
@@ -1441,7 +1447,7 @@ export const AppointmentsView: React.FC = () => {
                     stopPropagation
                     value={appt.status}
                     options={apptStatusOptions}
-                    onChange={val => updateAppointmentStatus(appt.id, val as AppointmentStatus)}
+                    onChange={val => updateAppointmentStatus(appt.id, val as AppointmentStatus, 'appointments_schedule')}
                     ariaLabel="حالة الموعد"
                     className="max-w-[92px] sm:max-w-none flex-shrink-0"
                   />
@@ -1829,7 +1835,7 @@ export const AppointmentsView: React.FC = () => {
                         type="button"
                         onClick={() => {
                           setCurrentDate(day.iso);
-                          setIsQuickActionOpen(true, 'appointment', { date: day.iso });
+                          setIsQuickActionOpen(true, 'appointment', { date: day.iso, source: 'appointments_schedule' });
                         }}
                         className="w-full py-1 text-[10px] font-bold text-[#087e83] hover:bg-[#e7f5f2] rounded-lg border border-dashed border-[#bfe2db]"
                       >
@@ -2196,7 +2202,7 @@ export const AppointmentsView: React.FC = () => {
                             stopPropagation
                             value={appt.status}
                             options={apptStatusOptions}
-                            onChange={val => updateAppointmentStatus(appt.id, val as AppointmentStatus)}
+                            onChange={val => updateAppointmentStatus(appt.id, val as AppointmentStatus, 'appointments_schedule')}
                             ariaLabel="حالة الموعد"
                             className="flex-shrink-0"
                           />
@@ -2254,7 +2260,7 @@ export const AppointmentsView: React.FC = () => {
         onClose={() => setClockPickerAppt(null)}
         onConfirm={newTime24 => {
           if (clockPickerAppt) {
-            updateAppointment(clockPickerAppt.id, { time: newTime24 });
+            updateAppointment(clockPickerAppt.id, { time: newTime24 }, 'appointments_schedule');
           }
         }}
       />

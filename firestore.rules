@@ -380,7 +380,7 @@ service cloud.firestore {
           'newStatus', 'changedBy', 'changedById', 'timestamp', 'notes',
           'audioDataUrl', 'audioDurationSeconds', 'feedbackOutcome', 'feedbackDate',
           'taskType', 'finishedWorkAction', 'finishedWorkAttempt', 'snoozeUntilDate', 'actionDate',
-          'reverted', 'revertedAt', 'revertedBy',
+          'actionSource', 'reverted', 'revertedAt', 'revertedBy',
           'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
         ]) &&
         hasValidBaseMeta(data) &&
@@ -403,6 +403,7 @@ service cloud.firestore {
         (!('finishedWorkAttempt' in data) || (data.finishedWorkAttempt is number && data.finishedWorkAttempt >= 1 && data.finishedWorkAttempt <= 1000)) &&
         (!('snoozeUntilDate' in data) || (data.snoozeUntilDate is string && data.snoozeUntilDate.size() <= 24)) &&
         (!('actionDate' in data) || (data.actionDate is string && data.actionDate.size() <= 24)) &&
+        (!('actionSource' in data) || (data.actionSource is string && data.actionSource.size() <= 64)) &&
         (!('reverted' in data) || data.reverted is bool) &&
         (!('revertedAt' in data) || (data.revertedAt is string && data.revertedAt.size() <= 64)) &&
         (!('revertedBy' in data) || (data.revertedBy is string && data.revertedBy.size() <= 120));

@@ -884,7 +884,7 @@ export const StaffAlertsView: React.FC = () => {
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <button
                         type="button"
-                        onClick={() => updateAppointmentStatus(appt.id, 'completed')}
+                        onClick={() => updateAppointmentStatus(appt.id, 'completed', 'staff_alerts')}
                         className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 cursor-pointer"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" />
@@ -892,7 +892,7 @@ export const StaffAlertsView: React.FC = () => {
                       </button>
                       <button
                         type="button"
-                        onClick={() => updateAppointmentStatus(appt.id, 'no_show')}
+                        onClick={() => updateAppointmentStatus(appt.id, 'no_show', 'staff_alerts')}
                         className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1 cursor-pointer"
                       >
                         <XCircle className="w-3.5 h-3.5" />

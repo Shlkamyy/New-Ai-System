@@ -100,6 +100,8 @@ export interface Appointment {
   cancellationReason?: string;
   notes?: string;
   createdAt: string;
+  createdBy?: string;
+  bookingSource?: FollowUpActionSource;
 }
 
 export interface ProcedureItem {
@@ -461,6 +463,17 @@ export interface StaffComment {
 
 export type FinishedWorkActionType = 'finished' | 'unreachable' | 'not_interested' | 'postpone_week' | 'closed_file';
 
+export type FollowUpActionSource =
+  | 'task_card_button'
+  | 'task_card_dropdown'
+  | 'followup_outside'
+  | 'appointments_schedule'
+  | 'dashboard_schedule'
+  | 'patients_list'
+  | 'patient_detail'
+  | 'staff_alerts'
+  | 'quick_action';
+
 export interface PatientFollowUpLogEntry {
   id: string;
   patientId: string;
@@ -481,6 +494,7 @@ export interface PatientFollowUpLogEntry {
   finishedWorkAttempt?: number;
   snoozeUntilDate?: string;
   actionDate?: string;
+  actionSource?: FollowUpActionSource;
   reverted?: boolean;
   revertedAt?: string;
   revertedBy?: string;

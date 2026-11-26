@@ -679,7 +679,10 @@ export const PatientDetailView: React.FC = () => {
       ...(statusChanged && !editFollowUpStatus ? { followUpStatus: '' } : {})
     });
     if (statusChanged && editFollowUpStatus) {
-      changePatientFollowUpStatus(patient.id, editFollowUpStatus, 'تحديث من نافذة تعديل بيانات المريض');
+      changePatientFollowUpStatus(patient.id, editFollowUpStatus, {
+        notes: 'تحديث من نافذة تعديل بيانات المريض',
+        actionSource: 'patient_detail'
+      });
     }
     setIsEditPatientOpen(false);
   };
@@ -752,7 +755,7 @@ export const PatientDetailView: React.FC = () => {
   const handleEditTimelineItem = (item: TimelineEvent) => {
     if (item.type === 'appointment') {
       if (!canEditAppointments) return;
-      setIsQuickActionOpen(true, 'appointment', { appointmentId: item.id });
+      setIsQuickActionOpen(true, 'appointment', { appointmentId: item.id, source: 'patient_detail' });
     } else if (item.type === 'invoice') {
       if (!canEditInvoicesPayments) return;
       const target = patInvoices.find(i => i.id === item.id);
@@ -843,7 +846,7 @@ export const PatientDetailView: React.FC = () => {
                 value={patientFollowUpStatuses.includes(patient.followUpStatus) ? patient.followUpStatus : ''}
                 onChange={val => {
                   if (!val) return;
-                  changePatientFollowUpStatus(patient.id, val);
+                  changePatientFollowUpStatus(patient.id, val, { actionSource: 'patient_detail' });
                   setFollowUpSavedNotice(true);
                   window.setTimeout(() => setFollowUpSavedNotice(false), 1800);
                 }}
@@ -1162,7 +1165,7 @@ export const PatientDetailView: React.FC = () => {
           {canAddAppointments && (
             <button
               type="button"
-              onClick={() => setIsQuickActionOpen(true, 'appointment', { patientId: patient.id })}
+              onClick={() => setIsQuickActionOpen(true, 'appointment', { patientId: patient.id, source: 'patient_detail' })}
               className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-[#087e83] hover:bg-[#06686c] text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
             >
               <Calendar className="w-3.5 h-3.5" />

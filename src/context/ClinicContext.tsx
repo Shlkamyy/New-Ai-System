@@ -32,7 +32,8 @@ import {
   StaffAlertLogType,
   StaffAlertInteraction,
   NotificationChannelMode,
-  FollowUpViewPrefill
+  FollowUpViewPrefill,
+  FollowUpActionSource
 } from '../types/clinic';
 
 import {
@@ -548,7 +549,7 @@ interface ClinicContextType {
   isPWAInstallModalOpen: boolean;
   deviceLayout: DeviceLayout;
   quickActionInitialTab?: 'appointment' | 'patient' | 'invoice' | 'payment' | 'expense' | 'task';
-  quickActionPrefill?: { date?: string; time?: string; unitId?: string; doctorId?: string; patientId?: string; appointmentId?: string; invoiceId?: string; amount?: number; toothNumber?: number; toothNumbers?: number[] };
+  quickActionPrefill?: { date?: string; time?: string; unitId?: string; doctorId?: string; patientId?: string; appointmentId?: string; invoiceId?: string; amount?: number; toothNumber?: number; toothNumbers?: number[]; source?: FollowUpActionSource };
   followUpViewPrefill: FollowUpViewPrefill | null;
 
   // Navigation & View Persistence
@@ -579,7 +580,7 @@ interface ClinicContextType {
   setIsQuickActionOpen: (
     open: boolean,
     tab?: 'appointment' | 'patient' | 'invoice' | 'payment' | 'expense' | 'task',
-    prefill?: { date?: string; time?: string; unitId?: string; doctorId?: string; patientId?: string; appointmentId?: string; invoiceId?: string; amount?: number; toothNumber?: number; toothNumbers?: number[] }
+    prefill?: { date?: string; time?: string; unitId?: string; doctorId?: string; patientId?: string; appointmentId?: string; invoiceId?: string; amount?: number; toothNumber?: number; toothNumbers?: number[]; source?: FollowUpActionSource }
   ) => void;
   setIsGlobalSearchOpen: (open: boolean) => void;
   setIsPWAInstallModalOpen: (open: boolean) => void;
@@ -598,8 +599,8 @@ interface ClinicContextType {
   togglePalmerTooth: (patientId: string, toothNumber: number) => void;
 
   addAppointment: (appt: Omit<Appointment, 'id' | 'createdAt'>) => { success: boolean; conflict?: Appointment };
-  updateAppointmentStatus: (id: string, status: AppointmentStatus) => void;
-  updateAppointment: (id: string, updates: Partial<Appointment>) => void;
+  updateAppointmentStatus: (id: string, status: AppointmentStatus, actionSource?: FollowUpActionSource) => void;
+  updateAppointment: (id: string, updates: Partial<Appointment>, actionSource?: FollowUpActionSource) => void;
   deleteAppointment: (id: string) => void;
   checkAppointmentConflict: (date: string, time: string, durationMinutes: number, unitId: string, excludeId?: string) => Appointment | undefined;
 
@@ -739,6 +740,7 @@ interface ClinicContextType {
           finishedWorkAttempt?: number;
           snoozeUntilDate?: string;
           actionDate?: string;
+          actionSource?: FollowUpActionSource;
           addTags?: string[];
           removeTags?: string[];
           keepCurrentStatus?: boolean;
@@ -4583,7 +4585,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isQuickActionOpen, setIsQuickActionOpen] = useState(false);
   const [quickActionInitialTab, setQuickActionInitialTab] = useState<'appointment' | 'patient' | 'invoice' | 'payment' | 'expense' | 'task' | undefined>(undefined);
-  const [quickActionPrefill, setQuickActionPrefill] = useState<{ date?: string; time?: string; unitId?: string; doctorId?: string; patientId?: string; appointmentId?: string; invoiceId?: string; amount?: number; toothNumber?: number; toothNumbers?: number[] } | undefined>(undefined);
+  const [quickActionPrefill, setQuickActionPrefill] = useState<{ date?: string; time?: string; unitId?: string; doctorId?: string; patientId?: string; appointmentId?: string; invoiceId?: string; amount?: number; toothNumber?: number; toothNumbers?: number[]; source?: FollowUpActionSource } | undefined>(undefined);
   const [followUpViewPrefill, setFollowUpViewPrefill] = useState<FollowUpViewPrefill | null>(null);
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   const [isPWAInstallModalOpen, setIsPWAInstallModalOpen] = useState(false);
@@ -5294,7 +5296,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const target = appointments.find(a => a.id === pending.appointmentId);
     if (!target) return;
     pendingNotificationActionRef.current = null;
-    updateAppointmentStatus(pending.appointmentId, pending.status);
+    updateAppointmentStatus(pending.appointmentId, pending.status, 'staff_alerts');
   }, [archiveReady, appointments, notifActionTick]);
 
   // Apply queued shift start/end action from background push notification once user session is active
@@ -5723,7 +5725,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const openQuickAction = (
     open: boolean,
     tab?: 'appointment' | 'patient' | 'invoice' | 'payment' | 'expense' | 'task',
-    prefill?: { date?: string; time?: string; unitId?: string; doctorId?: string; patientId?: string; appointmentId?: string; invoiceId?: string; amount?: number; toothNumber?: number; toothNumbers?: number[] }
+    prefill?: { date?: string; time?: string; unitId?: string; doctorId?: string; patientId?: string; appointmentId?: string; invoiceId?: string; amount?: number; toothNumber?: number; toothNumbers?: number[]; source?: FollowUpActionSource }
   ) => {
     setQuickActionInitialTab(tab);
     setQuickActionPrefill(open ? prefill : undefined);
@@ -6151,7 +6153,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const newAppt: Appointment = {
       ...apptData,
       id: newId,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      createdBy: apptData.createdBy || activeStaff.name
     };
 
     const nextAppts = [newAppt, ...appointmentsRef.current];
@@ -6209,19 +6212,39 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // Auto-update follow-up status on appointment creation
     if (newAppt.status === 'completed') {
-      changePatientFollowUpStatus(apptData.patientId, 'حضر للعيادة', 'تحديث تلقائي عند تسجيل موعد مكتمل');
+      changePatientFollowUpStatus(apptData.patientId, 'حضر للعيادة', {
+        notes: 'تحديث تلقائي عند تسجيل موعد مكتمل',
+        ...(apptData.bookingSource ? { actionSource: apptData.bookingSource } : {})
+      });
     } else if (newAppt.status !== 'cancelled' && newAppt.status !== 'no_show') {
-      changePatientFollowUpStatus(apptData.patientId, 'تم تحديد ميعاد', 'تحديث تلقائي عند حجز موعد');
+      changePatientFollowUpStatus(apptData.patientId, 'تم تحديد ميعاد', {
+        notes: 'تحديث تلقائي عند حجز موعد',
+        ...(apptData.bookingSource ? { actionSource: apptData.bookingSource } : {})
+      });
     }
 
     return { success: true, conflict };
   };
 
-  const updateAppointmentStatus = (id: string, status: AppointmentStatus) => {
+  const updateAppointmentStatus = (id: string, status: AppointmentStatus, actionSource?: FollowUpActionSource) => {
     const activeStaff = resolveActiveStaffFromRefs();
     if (!hasStaffPermission(activeStaff, 'editAppointments')) return;
     const existingAppt = appointmentsRef.current.find(a => a.id === id);
-    const updatedAppt = existingAppt ? { ...existingAppt, status } : undefined;
+    const todayStr = getTodayDateString();
+    const existingApptYmd = (existingAppt?.date || '').trim().slice(0, 10);
+    const isReactivation = Boolean(
+      existingAppt &&
+      (existingAppt.status === 'cancelled' || existingAppt.status === 'no_show') &&
+      (status === 'booked' || status === 'confirmed' || status === 'arrived') &&
+      existingApptYmd >= todayStr
+    );
+    const updatedAppt = existingAppt
+      ? {
+          ...existingAppt,
+          status,
+          ...(isReactivation && actionSource ? { bookingSource: actionSource } : {})
+        }
+      : undefined;
     if (updatedAppt) {
       const nextAppts = appointmentsRef.current.map(a => (a.id === id ? updatedAppt : a));
       appointmentsRef.current = nextAppts;
@@ -6233,20 +6256,19 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setAppointments(prev => prev.map(a => (a.id === id ? { ...a, status } : a)));
     }
     if (existingAppt && updatedAppt) {
-      const todayStr = getTodayDateString();
-      const apptYmd = (existingAppt.date || '').trim().slice(0, 10);
-
       logAuditAction('status_change', 'appointment', id, existingAppt.patientName, `تغيير حالة موعد ${existingAppt.patientName} من (${existingAppt.status}) إلى (${status})`, existingAppt, updatedAppt, 'appointments', existingAppt.patientId);
 
       // Auto-update follow-up status to "حضر للعيادة" when visit is completed
       if (status === 'completed') {
-        changePatientFollowUpStatus(existingAppt.patientId, 'حضر للعيادة', 'تحديث تلقائي عند إتمام الزيارة');
-      } else if (
-        (existingAppt.status === 'cancelled' || existingAppt.status === 'no_show') &&
-        (status === 'booked' || status === 'confirmed' || status === 'arrived') &&
-        apptYmd >= todayStr
-      ) {
-        changePatientFollowUpStatus(existingAppt.patientId, 'تم تحديد ميعاد', 'تحديث تلقائي عند إعادة تفعيل الموعد');
+        changePatientFollowUpStatus(existingAppt.patientId, 'حضر للعيادة', {
+          notes: 'تحديث تلقائي عند إتمام الزيارة',
+          ...(actionSource ? { actionSource } : {})
+        });
+      } else if (isReactivation) {
+        changePatientFollowUpStatus(existingAppt.patientId, 'تم تحديد ميعاد', {
+          notes: 'تحديث تلقائي عند إعادة تفعيل الموعد',
+          ...(actionSource ? { actionSource } : {})
+        });
       }
 
       // Record interaction in Staff Alert History if this appointment has a logged alert or was overdue
@@ -6297,11 +6319,34 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  const updateAppointment = (id: string, updates: Partial<Appointment>) => {
+  const updateAppointment = (id: string, updates: Partial<Appointment>, actionSource?: FollowUpActionSource) => {
     const activeStaff = resolveActiveStaffFromRefs();
     if (!hasStaffPermission(activeStaff, 'editAppointments')) return;
     const existingAppt = appointmentsRef.current.find(a => a.id === id);
-    const updatedAppt = existingAppt ? { ...existingAppt, ...updates } : undefined;
+    const todayStr = getTodayDateString();
+    const candidateStatus = updates.status ?? existingAppt?.status;
+    const candidateDate = (updates.date ?? existingAppt?.date ?? '').trim().slice(0, 10);
+    const prevApptYmd = (existingAppt?.date || '').trim().slice(0, 10);
+    const wasInactiveOrPast = Boolean(
+      existingAppt &&
+      (existingAppt.status === 'cancelled' ||
+        existingAppt.status === 'no_show' ||
+        (prevApptYmd && prevApptYmd < todayStr && existingAppt.status !== 'completed'))
+    );
+    const isNowUpcoming =
+      candidateStatus === 'booked' ||
+      candidateStatus === 'confirmed' ||
+      candidateStatus === 'arrived';
+    const isReactivationOrReschedule = Boolean(
+      existingAppt && wasInactiveOrPast && isNowUpcoming && candidateDate >= todayStr
+    );
+    const updatedAppt = existingAppt
+      ? {
+          ...existingAppt,
+          ...updates,
+          ...(isReactivationOrReschedule && actionSource ? { bookingSource: actionSource } : {})
+        }
+      : undefined;
     if (updatedAppt) {
       const nextAppts = appointmentsRef.current.map(a => (a.id === id ? updatedAppt : a));
       appointmentsRef.current = nextAppts;
@@ -6313,31 +6358,24 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setAppointments(prev => prev.map(a => (a.id === id ? { ...a, ...updates } : a)));
     }
     if (existingAppt && updatedAppt) {
-      const todayStr = getTodayDateString();
-      const apptYmd = (updatedAppt.date || '').trim().slice(0, 10);
-
       logAuditAction('update', 'appointment', id, updatedAppt.patientName, `تعديل بيانات موعد ${updatedAppt.patientName}`, existingAppt, updatedAppt, 'appointments', updatedAppt.patientId);
       if (updates.status === 'completed' && existingAppt.status !== 'completed') {
-        changePatientFollowUpStatus(updatedAppt.patientId, 'حضر للعيادة', 'تحديث تلقائي عند إتمام الزيارة');
-      } else {
-        const prevApptYmd = (existingAppt.date || '').trim().slice(0, 10);
-        const wasInactiveOrPast =
-          existingAppt.status === 'cancelled' ||
-          existingAppt.status === 'no_show' ||
-          (prevApptYmd && prevApptYmd < todayStr && existingAppt.status !== 'completed');
-        const isNowUpcoming =
-          updatedAppt.status === 'booked' ||
-          updatedAppt.status === 'confirmed' ||
-          updatedAppt.status === 'arrived';
-        if (wasInactiveOrPast && isNowUpcoming && apptYmd >= todayStr) {
-          changePatientFollowUpStatus(
-            updatedAppt.patientId,
-            'تم تحديد ميعاد',
-            existingAppt.status === 'cancelled' || existingAppt.status === 'no_show'
-              ? 'تحديث تلقائي عند إعادة تفعيل الموعد'
-              : 'تحديث تلقائي عند تعديل الموعد لموعد قادم'
-          );
-        }
+        changePatientFollowUpStatus(updatedAppt.patientId, 'حضر للعيادة', {
+          notes: 'تحديث تلقائي عند إتمام الزيارة',
+          ...(actionSource ? { actionSource } : {})
+        });
+      } else if (isReactivationOrReschedule) {
+        changePatientFollowUpStatus(
+          updatedAppt.patientId,
+          'تم تحديد ميعاد',
+          {
+            notes:
+              existingAppt.status === 'cancelled' || existingAppt.status === 'no_show'
+                ? 'تحديث تلقائي عند إعادة تفعيل الموعد'
+                : 'تحديث تلقائي عند تعديل الموعد لموعد قادم',
+            ...(actionSource ? { actionSource } : {})
+          }
+        );
       }
     }
   };
@@ -9317,6 +9355,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           finishedWorkAttempt?: number;
           snoozeUntilDate?: string;
           actionDate?: string;
+          actionSource?: FollowUpActionSource;
           addTags?: string[];
           removeTags?: string[];
           keepCurrentStatus?: boolean;
@@ -9421,6 +9460,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         : {}),
       ...(opts.snoozeUntilDate ? { snoozeUntilDate: opts.snoozeUntilDate.slice(0, 24) } : {}),
       ...(opts.actionDate ? { actionDate: opts.actionDate.slice(0, 24) } : {}),
+      ...(opts.actionSource ? { actionSource: opts.actionSource.slice(0, 64) as FollowUpActionSource } : {}),
       reverted: false
     };
 

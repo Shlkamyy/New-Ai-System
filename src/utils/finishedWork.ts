@@ -121,6 +121,7 @@ export interface FinishedWorkPatientInfo {
   isCurrentlySnoozed: boolean;
   todayAction?: FinishedWorkActionType | 'booked_appt';
   todayLogId?: string;
+  todayApptId?: string;
   isPrevWorkDayVisit: boolean;
 }
 
@@ -829,6 +830,9 @@ export function computeFinishedWorkTaskProgress(
   const externalClosedTodaySet = new Set<string>();
   const externalRevertedTodaySet = new Set<string>();
   const reactivatedLogTodaySet = new Set<string>();
+  const externalFinishLogByPatient = new Map<string, PatientFollowUpLogEntry>();
+  const externalClosedLogByPatient = new Map<string, PatientFollowUpLogEntry>();
+  const externalBookedLogByPatient = new Map<string, PatientFollowUpLogEntry>();
 
   const evalDateExternalLogs = logIndex.externalLogsByDate.get(evalDate);
   if (evalDateExternalLogs) {
@@ -838,16 +842,23 @@ export function computeFinishedWorkTaskProgress(
       const prevSt = (log.previousStatus || '').trim();
       if (isReactivationOrRescheduleLog(log)) {
         reactivatedLogTodaySet.add(patientId);
+        externalBookedLogByPatient.set(patientId, log);
+      } else if (nextSt === 'تم تحديد ميعاد') {
+        externalBookedLogByPatient.set(patientId, log);
       } else if (nextSt === FINISHED_WORK_STATUS_DONE && prevSt !== FINISHED_WORK_STATUS_DONE) {
         externalFinishTodaySet.add(patientId);
+        externalFinishLogByPatient.set(patientId, log);
         externalClosedTodaySet.delete(patientId);
+        externalClosedLogByPatient.delete(patientId);
         externalRevertedTodaySet.delete(patientId);
       } else if (
         nextSt === FINISHED_WORK_STATUS_NOT_INTERESTED &&
         prevSt !== FINISHED_WORK_STATUS_NOT_INTERESTED
       ) {
         externalClosedTodaySet.add(patientId);
+        externalClosedLogByPatient.set(patientId, log);
         externalFinishTodaySet.delete(patientId);
+        externalFinishLogByPatient.delete(patientId);
         externalRevertedTodaySet.delete(patientId);
       } else if (
         nextSt !== FINISHED_WORK_STATUS_DONE &&
@@ -856,7 +867,9 @@ export function computeFinishedWorkTaskProgress(
         nextSt !== 'حضر للعيادة'
       ) {
         externalFinishTodaySet.delete(patientId);
+        externalFinishLogByPatient.delete(patientId);
         externalClosedTodaySet.delete(patientId);
+        externalClosedLogByPatient.delete(patientId);
         externalRevertedTodaySet.add(patientId);
       }
     }
@@ -866,6 +879,7 @@ export function computeFinishedWorkTaskProgress(
   const upcomingPatientIdSet = new Set<string>();
   const upcomingBeforeTodaySet = new Set<string>();
   const bookedTodayPatientSet = new Set<string>();
+  const bookedTodayApptByPatient = new Map<string, Appointment>();
   const visitedTodayCreatedBeforeSet = new Set<string>();
 
   const startFutureIdx = lowerBoundDates(apptIndex.sortedDatesAsc, evalDate);
@@ -886,9 +900,17 @@ export function computeFinishedWorkTaskProgress(
 
       if (a.apptYmd >= evalDate && a.createdYmd === evalDate) {
         bookedTodayPatientSet.add(a.patientId);
+        const prevBooked = bookedTodayApptByPatient.get(a.patientId);
+        const prevMs = prevBooked?.createdAt ? Date.parse(prevBooked.createdAt) || 0 : 0;
+        if (!prevBooked || a.createdMs >= prevMs) {
+          bookedTodayApptByPatient.set(a.patientId, a.appt);
+        }
       } else if (isFutureOrActiveToday && (!a.createdYmd || a.createdYmd < evalDate)) {
         if (reactivatedLogTodaySet.has(a.patientId)) {
           bookedTodayPatientSet.add(a.patientId);
+          if (!bookedTodayApptByPatient.has(a.patientId)) {
+            bookedTodayApptByPatient.set(a.patientId, a.appt);
+          }
         } else {
           upcomingBeforeTodaySet.add(a.patientId);
         }
@@ -971,6 +993,7 @@ export function computeFinishedWorkTaskProgress(
     lastDeferral: FinishedWorkDeferralInfo | null;
     isCurrentlySnoozed: boolean;
     todayLog?: PatientFollowUpLogEntry;
+    todayAppt?: Appointment;
     resolvedTodayAction?: FinishedWorkActionType | 'booked_appt';
     isActiveCandidate: boolean;
   }
@@ -1089,26 +1112,35 @@ export function computeFinishedWorkTaskProgress(
     );
 
     let resolvedTodayAction: FinishedWorkActionType | 'booked_appt' | undefined;
+    let resolvedTodayLog: PatientFollowUpLogEntry | undefined;
+    let resolvedTodayAppt: Appointment | undefined;
     if (todayLog?.finishedWorkAction === 'closed_file') {
       resolvedTodayAction = 'closed_file';
+      resolvedTodayLog = todayLog;
     } else if (todayLog?.finishedWorkAction === 'finished') {
       resolvedTodayAction = 'finished';
+      resolvedTodayLog = todayLog;
     } else if (bookedToday && !hadPriorCycleCompletion) {
       resolvedTodayAction = 'booked_appt';
+      resolvedTodayLog = externalBookedLogByPatient.get(patientId) || todayLog;
+      resolvedTodayAppt = bookedTodayApptByPatient.get(patientId);
     } else if (
       externalClosedTodaySet.has(patientId) &&
       !upcomingBeforeTodaySet.has(patientId) &&
       !hadPriorCycleCompletion
     ) {
       resolvedTodayAction = 'closed_file';
+      resolvedTodayLog = externalClosedLogByPatient.get(patientId);
     } else if (
       externalFinishTodaySet.has(patientId) &&
       !upcomingBeforeTodaySet.has(patientId) &&
       !hadPriorCycleCompletion
     ) {
       resolvedTodayAction = 'finished';
+      resolvedTodayLog = externalFinishLogByPatient.get(patientId);
     } else if (todayLog?.finishedWorkAction) {
       resolvedTodayAction = todayLog.finishedWorkAction;
+      resolvedTodayLog = todayLog;
     }
 
     const isActiveCandidate =
@@ -1135,7 +1167,8 @@ export function computeFinishedWorkTaskProgress(
       currentCycleLogs,
       lastDeferral,
       isCurrentlySnoozed,
-      todayLog,
+      todayLog: resolvedTodayLog,
+      todayAppt: resolvedTodayAppt,
       resolvedTodayAction,
       isActiveCandidate
     };
@@ -1310,6 +1343,7 @@ export function computeFinishedWorkTaskProgress(
       isCurrentlySnoozed: item.isCurrentlySnoozed,
       todayAction: item.resolvedTodayAction,
       todayLogId: item.todayLog?.id,
+      todayApptId: item.todayAppt?.id,
       isPrevWorkDayVisit: item.isPrevWorkDay
     };
 

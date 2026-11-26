@@ -908,7 +908,7 @@ export const PatientsView: React.FC = () => {
                           }
                           onChange={val => {
                             if (!val) return;
-                            changePatientFollowUpStatus(pat.id, val);
+                            changePatientFollowUpStatus(pat.id, val, { actionSource: 'patients_list' });
                           }}
                           placeholder="-- حالة المتابعة --"
                           options={patientFollowUpStatuses.map(st => ({

@@ -509,20 +509,24 @@ const QuickActionModalInner: React.FC = () => {
     const unit = units.find(u => u.id === finalUnitId) || restrictedUnit;
 
     if (editingAppointment) {
-      updateAppointment(editingAppointment.id, {
-        patientId: targetPatient.id,
-        patientName: targetPatient.name,
-        patientPhone: targetPatient.phone,
-        date: apptDate,
-        time: apptTime,
-        durationMinutes: apptDuration,
-        status: apptStatus,
-        unitId: finalUnitId,
-        unitName: unit ? unit.name : 'عيادة ١',
-        doctorId: apptDoctorId,
-        doctorName: doctor ? doctor.name : 'د. محمد شلقامي',
-        notes: editingAppointment.notes || ''
-      });
+      updateAppointment(
+        editingAppointment.id,
+        {
+          patientId: targetPatient.id,
+          patientName: targetPatient.name,
+          patientPhone: targetPatient.phone,
+          date: apptDate,
+          time: apptTime,
+          durationMinutes: apptDuration,
+          status: apptStatus,
+          unitId: finalUnitId,
+          unitName: unit ? unit.name : 'عيادة ١',
+          doctorId: apptDoctorId,
+          doctorName: doctor ? doctor.name : 'د. محمد شلقامي',
+          notes: editingAppointment.notes || ''
+        },
+        quickActionPrefill?.source || 'quick_action'
+      );
     } else {
       addAppointment({
         patientId: targetPatient.id,
@@ -536,7 +540,8 @@ const QuickActionModalInner: React.FC = () => {
         unitName: unit ? unit.name : 'عيادة ١',
         doctorId: apptDoctorId,
         doctorName: doctor ? doctor.name : 'د. محمد شلقامي',
-        notes: ''
+        notes: '',
+        bookingSource: quickActionPrefill?.source || 'quick_action'
       });
     }
 

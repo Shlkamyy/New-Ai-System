@@ -667,7 +667,7 @@ export const PersistentActionButtons: React.FC<{
                     <div className="grid grid-cols-2 gap-1.5 pt-0.5">
                       <button
                         type="button"
-                        onClick={() => updateAppointmentStatus(appt.id, 'completed')}
+                        onClick={() => updateAppointmentStatus(appt.id, 'completed', 'staff_alerts')}
                         className="py-2 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-[11px] flex items-center justify-center gap-1 shadow-xs transition-transform cursor-pointer touch-manipulation"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0 pointer-events-none" />
@@ -676,7 +676,7 @@ export const PersistentActionButtons: React.FC<{
 
                       <button
                         type="button"
-                        onClick={() => updateAppointmentStatus(appt.id, 'no_show')}
+                        onClick={() => updateAppointmentStatus(appt.id, 'no_show', 'staff_alerts')}
                         className="py-2 px-2 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-[11px] flex items-center justify-center gap-1 shadow-xs transition-transform cursor-pointer touch-manipulation"
                       >
                         <XCircle className="w-3.5 h-3.5 flex-shrink-0 pointer-events-none" />

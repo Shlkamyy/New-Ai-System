@@ -670,7 +670,7 @@ export const DashboardView: React.FC = () => {
                 {canAddAppointments && (
                   <button
                     type="button"
-                    onClick={() => setIsQuickActionOpen(true, 'appointment', { date: currentDate })}
+                    onClick={() => setIsQuickActionOpen(true, 'appointment', { date: currentDate, source: 'dashboard_schedule' })}
                     className="px-3 py-1.5 rounded-xl bg-[#e7f5f2] hover:bg-[#d6ede8] text-[#087e83] font-bold text-xs flex items-center gap-1 shadow-2xs cursor-pointer whitespace-nowrap touch-manipulation select-none [-webkit-tap-highlight-color:transparent] active:scale-95"
                     title="حجز موعد جديد بتاريخ اليوم المحدد"
                   >
@@ -819,7 +819,7 @@ export const DashboardView: React.FC = () => {
                             stopPropagation
                             value={appt.status}
                             options={apptStatusOptions}
-                            onChange={val => updateAppointmentStatus(appt.id, val as AppointmentStatus)}
+                            onChange={val => updateAppointmentStatus(appt.id, val as AppointmentStatus, 'dashboard_schedule')}
                             ariaLabel="حالة الموعد"
                             className="flex-shrink-0"
                           />
@@ -844,7 +844,7 @@ export const DashboardView: React.FC = () => {
                               colorHex: getFollowUpStatusColorHex(st, listItemColors.followUpStatuses)
                             }))}
                             onChange={val => {
-                              if (val) changePatientFollowUpStatus(pat.id, val);
+                              if (val) changePatientFollowUpStatus(pat.id, val, { actionSource: 'dashboard_schedule' });
                             }}
                             ariaLabel="حالة متابعة المريض"
                             className="flex-shrink-0"
@@ -952,7 +952,7 @@ export const DashboardView: React.FC = () => {
                               type="button"
                               onClick={() => {
                                 setOpenApptMenuId(null);
-                                setIsQuickActionOpen(true, 'appointment', { patientId: appt.patientId });
+                                setIsQuickActionOpen(true, 'appointment', { patientId: appt.patientId, source: 'dashboard_schedule' });
                               }}
                               className="w-full px-3 py-2 text-right hover:bg-[#f0f8f6] hover:text-[#087e83] flex items-center gap-2 transition-colors cursor-pointer"
                             >
@@ -999,7 +999,7 @@ export const DashboardView: React.FC = () => {
                               type="button"
                               onClick={() => {
                                 setOpenApptMenuId(null);
-                                setIsQuickActionOpen(true, 'appointment', { appointmentId: appt.id });
+                                setIsQuickActionOpen(true, 'appointment', { appointmentId: appt.id, source: 'dashboard_schedule' });
                               }}
                               className="w-full px-3 py-2 text-right hover:bg-[#f0f8f6] hover:text-[#087e83] flex items-center gap-2 transition-colors cursor-pointer"
                             >
@@ -1048,7 +1048,7 @@ export const DashboardView: React.FC = () => {
             {canAddAppointments && (
               <button
                 type="button"
-                onClick={() => setIsQuickActionOpen(true, 'appointment', { date: currentDate })}
+                onClick={() => setIsQuickActionOpen(true, 'appointment', { date: currentDate, source: 'dashboard_schedule' })}
                 className="text-xs font-bold text-[#087e83] underline cursor-pointer"
               >
                 + حجز موعد
@@ -1147,7 +1147,7 @@ export const DashboardView: React.FC = () => {
           {canAddAppointments && (
             <button
               type="button"
-              onClick={() => setIsQuickActionOpen(true, 'appointment')}
+              onClick={() => setIsQuickActionOpen(true, 'appointment', { source: 'dashboard_schedule' })}
               className="px-3.5 py-2 rounded-xl bg-white text-[#087e83] font-bold text-xs hover:bg-[#e6f6f2] shadow-sm flex items-center gap-1.5 transition-transform active:scale-95"
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
@@ -1760,7 +1760,7 @@ export const DashboardView: React.FC = () => {
         onClose={() => setClockPickerAppt(null)}
         onConfirm={newTime24 => {
           if (clockPickerAppt) {
-            updateAppointment(clockPickerAppt.id, { time: newTime24 });
+            updateAppointment(clockPickerAppt.id, { time: newTime24 }, 'dashboard_schedule');
           }
         }}
       />

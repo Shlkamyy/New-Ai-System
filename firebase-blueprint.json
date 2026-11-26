@@ -308,6 +308,7 @@
         "finishedWorkAttempt": { "type": "number" },
         "snoozeUntilDate": { "type": "string", "maxLength": 24 },
         "actionDate": { "type": "string", "maxLength": 24 },
+        "actionSource": { "type": "string", "maxLength": 64 },
         "reverted": { "type": "boolean" },
         "revertedAt": { "type": "string", "maxLength": 64 },
         "revertedBy": { "type": "string", "maxLength": 120 },

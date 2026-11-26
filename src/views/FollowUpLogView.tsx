@@ -80,10 +80,23 @@ function hasManualFollowUpNote(entry: PatientFollowUpLogEntry): boolean {
   const notes = (entry.notes || '').trim();
   if (!notes) return false;
   if (notes === 'تم التواصل — خلص شغل') return false;
+  if (notes === 'إغلاق الملف — غير مهتم') return false;
   if (notes.startsWith('لا يمكن التواصل — تأجيل')) return false;
   if (notes.startsWith('تحديث تلقائي')) return false;
   return true;
 }
+
+const ACTION_SOURCE_LABELS: Record<string, { label: string; isInside: boolean }> = {
+  task_card_button: { label: 'من زرار كارت المهمة', isInside: true },
+  task_card_dropdown: { label: 'من قائمة كارت المهمة', isInside: true },
+  appointments_schedule: { label: 'من برا المهمة · جدول المواعيد', isInside: false },
+  dashboard_schedule: { label: 'من برا المهمة · لوحة التحكم', isInside: false },
+  patients_list: { label: 'من برا المهمة · قائمة المرضى', isInside: false },
+  patient_detail: { label: 'من برا المهمة · ملف المريض', isInside: false },
+  followup_outside: { label: 'من برا المهمة · حالات المتابعة', isInside: false },
+  staff_alerts: { label: 'من برا المهمة · تنبيهات الموظفين', isInside: false },
+  quick_action: { label: 'من برا المهمة · الإضافة السريعة', isInside: false }
+};
 
 function getEntryTaskKind(entry: PatientFollowUpLogEntry): 'finished_work' | 'feedback' | null {
   if (entry.taskType === 'finished_work' || entry.finishedWorkAction) return 'finished_work';
@@ -663,6 +676,18 @@ export const FollowUpLogView: React.FC = () => {
                           {entry.finishedWorkAttempt ? ` · محاولة ${entry.finishedWorkAttempt}` : ''}
                           {entry.snoozeUntilDate ? ` (حتى ${entry.snoozeUntilDate})` : ''}
                           {!entry.snoozeUntilDate && entry.actionDate ? ` (${entry.actionDate})` : ''}
+                        </span>
+                      )}
+
+                      {entry.actionSource && ACTION_SOURCE_LABELS[entry.actionSource] && (
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            ACTION_SOURCE_LABELS[entry.actionSource].isInside
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-amber-50 text-amber-800 border-amber-200'
+                          }`}
+                        >
+                          {ACTION_SOURCE_LABELS[entry.actionSource].label}
                         </span>
                       )}
 

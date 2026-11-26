@@ -182,3 +182,101 @@ test('computeFinishedWorkTaskProgress pulls fallback older visits beyond 45-day 
   assert.deepEqual(progress.activePatientIds, ['very_old']);
   assert.equal(progress.quotaTarget, 1);
 });
+
+test('computeFinishedWorkTaskProgress preserves todayLogId and todayApptId for external status and booked_appt completions', () => {
+  const pExternalDone = makePatient('ext_done', { followUpStatus: 'خلص شغل' });
+  const pExternalClosed = makePatient('ext_closed', { followUpStatus: 'غير مهتم' });
+  const pBooked = makePatient('ext_booked', { followUpStatus: 'تم تحديد ميعاد' });
+
+  const appointments: Appointment[] = [
+    makeCompletedAppt(pExternalDone.id, '2026-10-19'),
+    makeCompletedAppt(pExternalClosed.id, '2026-10-19'),
+    makeCompletedAppt(pBooked.id, '2026-10-19'),
+    {
+      id: 'appt_new_booking',
+      patientId: pBooked.id,
+      patientName: pBooked.name,
+      patientPhone: pBooked.phone,
+      doctorId: 'doc_1',
+      doctorName: 'د. مي قاسم',
+      unitId: 'unit_1',
+      unitName: 'العيادة الرئيسية',
+      date: '2026-10-25',
+      time: '16:00',
+      durationMinutes: 30,
+      status: 'booked',
+      procedureType: 'حشو',
+      createdAt: '2026-10-20T12:30:00.000Z',
+      createdBy: 'سارة',
+      bookingSource: 'appointments_schedule'
+    }
+  ];
+
+  const logs: PatientFollowUpLogEntry[] = [
+    {
+      id: 'log_ext_done',
+      patientId: pExternalDone.id,
+      patientName: pExternalDone.name,
+      patientPhone: pExternalDone.phone,
+      previousStatus: 'عميل محتمل',
+      newStatus: 'خلص شغل',
+      changedBy: 'مريم',
+      changedById: 'u_mariam',
+      timestamp: '2026-10-20T11:15:00.000Z',
+      actionSource: 'patients_list',
+      reverted: false
+    },
+    {
+      id: 'log_ext_closed',
+      patientId: pExternalClosed.id,
+      patientName: pExternalClosed.name,
+      patientPhone: pExternalClosed.phone,
+      previousStatus: 'عميل محتمل',
+      newStatus: 'غير مهتم',
+      changedBy: 'نور',
+      changedById: 'u_nour',
+      timestamp: '2026-10-20T13:05:00.000Z',
+      actionSource: 'followup_outside',
+      notes: 'ملاحظة الموظفة',
+      reverted: false
+    },
+    {
+      id: 'log_ext_booked',
+      patientId: pBooked.id,
+      patientName: pBooked.name,
+      patientPhone: pBooked.phone,
+      previousStatus: 'عميل محتمل',
+      newStatus: 'تم تحديد ميعاد',
+      changedBy: 'سارة',
+      changedById: 'u_sara',
+      timestamp: '2026-10-20T12:30:00.000Z',
+      notes: 'تحديث تلقائي عند حجز موعد',
+      actionSource: 'appointments_schedule',
+      reverted: false
+    }
+  ];
+
+  const progress = computeFinishedWorkTaskProgress(
+    '2026-10-20',
+    WEEKDAYS,
+    [pExternalDone, pExternalClosed, pBooked],
+    appointments,
+    [],
+    [],
+    logs
+  );
+
+  const doneInfo = progress.patientInfoById.get(pExternalDone.id);
+  assert.equal(doneInfo?.todayAction, 'finished');
+  assert.equal(doneInfo?.todayLogId, 'log_ext_done');
+
+  const closedInfo = progress.patientInfoById.get(pExternalClosed.id);
+  assert.equal(closedInfo?.todayAction, 'closed_file');
+  assert.equal(closedInfo?.todayLogId, 'log_ext_closed');
+
+  const bookedInfo = progress.patientInfoById.get(pBooked.id);
+  assert.equal(bookedInfo?.todayAction, 'booked_appt');
+  assert.equal(bookedInfo?.todayLogId, 'log_ext_booked');
+  assert.equal(bookedInfo?.todayApptId, 'appt_new_booking');
+});
+

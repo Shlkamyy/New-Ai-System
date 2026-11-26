@@ -222,7 +222,20 @@ export const DashboardView: React.FC = () => {
       return;
     }
     const uName = units.find(u => u.id === targetUnit)?.name || '';
-    setShiftMsg({ type: 'success', text: `تم تسجيل بدء الشفت بنجاح (${uName})` });
+    const syncRes = res.syncPromise ? await res.syncPromise : { syncedToCloud: true, queuedOffline: false };
+    if (syncRes.permanentError) {
+      setShiftMsg({
+        type: 'error',
+        text: `تم تسجيل بدء الشفت محلياً ولكن فشلت المزامنة للإدارة: ${syncRes.permanentError}`
+      });
+      return;
+    }
+    setShiftMsg({
+      type: 'success',
+      text: syncRes.queuedOffline
+        ? `تم حفظ بدء الشفت محلياً (${uName}) بدون اتصال — سيتم إرساله للإدارة فور عودة الإنترنت`
+        : `تم تسجيل بدء الشفت بنجاح ومزامنته للإدارة (${uName})`
+    });
   };
 
   const handleDashboardClockOut = async () => {
@@ -232,8 +245,25 @@ export const DashboardView: React.FC = () => {
     const ok = await verifyBranchGPS(myActiveShift.unitId, 'shift_end');
     setShiftBusy(false);
     if (!ok) return;
-    clockOut(myActiveShift.id);
-    setShiftMsg({ type: 'success', text: 'تم تسجيل إنهاء الشفت بنجاح' });
+    const outRes = clockOut(myActiveShift.id);
+    if (!outRes.success) {
+      setShiftMsg({ type: 'error', text: outRes.error || 'تعذر إنهاء الشفت' });
+      return;
+    }
+    const syncRes = outRes.syncPromise ? await outRes.syncPromise : { syncedToCloud: true, queuedOffline: false };
+    if (syncRes.permanentError) {
+      setShiftMsg({
+        type: 'error',
+        text: `تم تسجيل إنهاء الشفت محلياً ولكن فشلت المزامنة للإدارة: ${syncRes.permanentError}`
+      });
+      return;
+    }
+    setShiftMsg({
+      type: 'success',
+      text: syncRes.queuedOffline
+        ? 'تم حفظ إنهاء الشفت محلياً بدون اتصال — سيتم إرساله للإدارة فور عودة الإنترنت'
+        : 'تم تسجيل إنهاء الشفت بنجاح ومزامنته للإدارة'
+    });
   };
 
   const isAdmin = currentUser.role === 'admin';

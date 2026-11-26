@@ -473,6 +473,8 @@ const MainLayout: React.FC = () => {
     cloudNeedsConsoleSetup,
     pendingCloudCount,
     retryPendingCloudSync,
+    retryAttendanceSync,
+    attendanceSyncErrors,
     shiftAlertFeedback,
     clearShiftAlertFeedback,
     triggerShiftActionFromAlert
@@ -650,13 +652,28 @@ const MainLayout: React.FC = () => {
             <button
               type="button"
               onClick={() => {
+                if (
+                  Object.keys(attendanceSyncErrors).length > 0 &&
+                  shiftAlertFeedback.text.includes('المزامنة')
+                ) {
+                  void retryAttendanceSync().then(res => {
+                    if (res.success && res.failedCount === 0) {
+                      clearShiftAlertFeedback();
+                    }
+                  });
+                  return;
+                }
                 void triggerShiftActionFromAlert(shiftAlertFeedback.action, 'إعادة محاولة من التنبيه');
               }}
               className={`px-3 py-1.5 rounded-xl text-white font-bold text-[11px] cursor-pointer ${
                 isStart ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'
               }`}
             >
-              {isStart ? 'إعادة محاولة بدأ الشفت' : 'إعادة محاولة إنهاء الشفت'}
+              {Object.keys(attendanceSyncErrors).length > 0 && shiftAlertFeedback.text.includes('المزامنة')
+                ? 'إعادة محاولة المزامنة'
+                : isStart
+                ? 'إعادة محاولة بدأ الشفت'
+                : 'إعادة محاولة إنهاء الشفت'}
             </button>
           )}
           {!isLoading && (

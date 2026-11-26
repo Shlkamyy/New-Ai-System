@@ -15,7 +15,9 @@ import {
   Pencil,
   CheckCircle2,
   X,
-  Trash2
+  Trash2,
+  RefreshCw,
+  CloudOff
 } from 'lucide-react';
 import { getTodayDateString } from '../data/mockData';
 import { addDaysToYmd, formatCairoTime, getArabicWeekdayName, verifyUnitGeofence, getCairoNowParts, CLINIC_ATTENDANCE_RADIUS_METERS } from '../utils/arabic';
@@ -29,6 +31,10 @@ export const AttendanceView: React.FC = () => {
     clockOut,
     editAttendanceRecord,
     deleteAttendanceRecord,
+    pendingAttendanceIds,
+    attendanceSyncErrors,
+    retryAttendanceSync,
+    refreshAttendanceFromServer,
     editingAttendanceId,
     clearEditingAttendanceId,
     staffAlertLogs,
@@ -89,6 +95,8 @@ export const AttendanceView: React.FC = () => {
 
   const [shiftBusy, setShiftBusy] = useState(false);
   const [shiftMsg, setShiftMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+  const [syncActionBusy, setSyncActionBusy] = useState(false);
+  const [refreshBusy, setRefreshBusy] = useState(false);
 
   const [showManualModal, setShowManualModal] = useState(false);
 
@@ -178,7 +186,20 @@ export const AttendanceView: React.FC = () => {
       return;
     }
     const uName = units.find(u => u.id === targetUnit)?.name || '';
-    setShiftMsg({ type: 'success', text: `تم بدء الشفت بنجاح (${uName})` });
+    const syncRes = res.syncPromise ? await res.syncPromise : { syncedToCloud: true, queuedOffline: false };
+    if (syncRes.permanentError) {
+      setShiftMsg({
+        type: 'error',
+        text: `تم تسجيل بدء الشفت محلياً ولكن فشلت المزامنة للإدارة: ${syncRes.permanentError}`
+      });
+      return;
+    }
+    setShiftMsg({
+      type: 'success',
+      text: syncRes.queuedOffline
+        ? `تم حفظ بدء الشفت محلياً (${uName}) بدون اتصال — سيتم إرساله للإدارة تلقائياً فور عودة الإنترنت`
+        : `تم بدء الشفت بنجاح ومزامنته للإدارة (${uName})`
+    });
   };
 
   const handleClockOut = async () => {
@@ -188,8 +209,56 @@ export const AttendanceView: React.FC = () => {
     const ok = await verifyBranchGPS(currentActiveShift.unitId, 'shift_end');
     setShiftBusy(false);
     if (!ok) return;
-    clockOut(currentActiveShift.id);
-    setShiftMsg({ type: 'success', text: 'تم إنهاء الشفت بنجاح' });
+    const outRes = clockOut(currentActiveShift.id);
+    if (!outRes.success) {
+      setShiftMsg({ type: 'error', text: outRes.error || 'تعذر إنهاء الشفت' });
+      return;
+    }
+    const syncRes = outRes.syncPromise ? await outRes.syncPromise : { syncedToCloud: true, queuedOffline: false };
+    if (syncRes.permanentError) {
+      setShiftMsg({
+        type: 'error',
+        text: `تم تسجيل إنهاء الشفت محلياً ولكن فشلت المزامنة للإدارة: ${syncRes.permanentError}`
+      });
+      return;
+    }
+    setShiftMsg({
+      type: 'success',
+      text: syncRes.queuedOffline
+        ? 'تم حفظ إنهاء الشفت محلياً بدون اتصال — سيتم إرساله للإدارة تلقائياً فور عودة الإنترنت'
+        : 'تم إنهاء الشفت بنجاح ومزامنته للإدارة'
+    });
+  };
+
+  const handleRetryAttendanceSync = async () => {
+    if (syncActionBusy) return;
+    setSyncActionBusy(true);
+    try {
+      const res = await retryAttendanceSync();
+      if (res.success && res.failedCount === 0) {
+        setShiftMsg({
+          type: 'success',
+          text:
+            res.syncedCount > 0
+              ? `تمت مزامنة ${res.syncedCount} سجل حضور بنجاح مع السحابة.`
+              : 'جميع سجلات الحضور متزامنة حالياً.'
+        });
+      } else if (res.error) {
+        setShiftMsg({ type: 'error', text: res.error });
+      }
+    } finally {
+      setSyncActionBusy(false);
+    }
+  };
+
+  const handleAdminRefreshFromServer = async () => {
+    if (refreshBusy) return;
+    setRefreshBusy(true);
+    try {
+      await refreshAttendanceFromServer(true);
+    } finally {
+      setRefreshBusy(false);
+    }
   };
 
   const openEditShiftModal = (rec: AttendanceRecord) => {
@@ -507,7 +576,7 @@ export const AttendanceView: React.FC = () => {
     setShowManualModal(true);
   };
 
-  const handleManualSubmit = (e: React.FormEvent) => {
+  const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setManualFormError('');
     if (!manualUserId) {
@@ -541,11 +610,24 @@ export const AttendanceView: React.FC = () => {
     setSelectedReportDate(manualDate);
     setShowManualModal(false);
     setManualReason('');
+    const syncRes = res.syncPromise ? await res.syncPromise : { syncedToCloud: true, queuedOffline: false };
+    if (syncRes.permanentError) {
+      setShiftMsg({
+        type: 'error',
+        text: `تم تسجيل بدء الشفت يدوياً للموظف (${targetStaff?.name || ''}) محلياً ولكن فشلت المزامنة: ${syncRes.permanentError}`
+      });
+      return;
+    }
     setShiftMsg({
       type: 'success',
-      text: `تم تسجيل بدء الشفت يدوياً للموظف (${targetStaff?.name || ''}) بتاريخ ${manualDate} الساعة ${formatCairoTime(manualTime)}`
+      text: syncRes.queuedOffline
+        ? `تم تسجيل بدء الشفت يدوياً للموظف (${targetStaff?.name || ''}) بتاريخ ${manualDate} محلياً وسيتم إرساله للسحابة تلقائياً`
+        : `تم تسجيل بدء الشفت يدوياً للموظف (${targetStaff?.name || ''}) بتاريخ ${manualDate} الساعة ${formatCairoTime(manualTime)}`
     });
   };
+
+  const pendingAttendanceSet = useMemo(() => new Set(pendingAttendanceIds), [pendingAttendanceIds]);
+  const failedSyncEntries = useMemo(() => Object.entries(attendanceSyncErrors), [attendanceSyncErrors]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
@@ -558,17 +640,66 @@ export const AttendanceView: React.FC = () => {
             </h1>
           </div>
 
-          {isAdmin && hasPermission('manualAttendance') && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={handleAdminRefreshFromServer}
+                disabled={refreshBusy}
+                className="min-h-[44px] px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1.5 border border-slate-200 cursor-pointer disabled:opacity-60"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshBusy ? 'animate-spin' : ''}`} />
+                <span>{refreshBusy ? 'جاري التحديث...' : 'تحديث من السحابة'}</span>
+              </button>
+            )}
+
+            {isAdmin && hasPermission('manualAttendance') && (
+              <button
+                type="button"
+                onClick={openManualModal}
+                className="min-h-[44px] px-3.5 py-2 rounded-xl bg-[#e7f5f2] hover:bg-[#d5eee8] text-[#087e83] font-bold text-xs flex items-center gap-1.5 border border-[#bfe2db] cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>تسجيل يدوي</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {(pendingAttendanceIds.length > 0 || failedSyncEntries.length > 0) && (
+          <div
+            className={`p-3 rounded-2xl border text-xs font-bold flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
+              failedSyncEntries.length > 0
+                ? 'bg-rose-50 border-rose-200 text-rose-800'
+                : 'bg-amber-50 border-amber-200 text-amber-900'
+            }`}
+          >
+            <div className="flex items-start gap-2">
+              <CloudOff className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                {failedSyncEntries.length > 0 ? (
+                  <p>
+                    تعذر إرسال {failedSyncEntries.length} سجل حضور للإدارة:{' '}
+                    {failedSyncEntries[0]?.[1]}
+                  </p>
+                ) : (
+                  <p>
+                    يوجد {pendingAttendanceIds.length} سجل حضور محفوظ محلياً بانتظار المزامنة مع السحابة.
+                  </p>
+                )}
+              </div>
+            </div>
             <button
               type="button"
-              onClick={openManualModal}
-              className="px-3.5 py-2 rounded-xl bg-[#e7f5f2] hover:bg-[#d5eee8] text-[#087e83] font-bold text-xs flex items-center gap-1.5 self-start sm:self-auto border border-[#bfe2db] cursor-pointer"
+              onClick={handleRetryAttendanceSync}
+              disabled={syncActionBusy}
+              className="min-h-[44px] px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 border border-current/20 font-extrabold text-xs flex items-center gap-1.5 self-start sm:self-center cursor-pointer flex-shrink-0 disabled:opacity-60"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>تسجيل يدوي</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${syncActionBusy ? 'animate-spin' : ''}`} />
+              <span>{syncActionBusy ? 'جاري الإرسال...' : 'إعادة محاولة المزامنة'}</span>
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {shiftMsg && (
           <div
@@ -659,7 +790,7 @@ export const AttendanceView: React.FC = () => {
                   type="button"
                   disabled={shiftBusy}
                   onClick={handleClockIn}
-                  className="px-5 py-2.5 rounded-xl bg-[#087e83] hover:bg-[#06686c] disabled:opacity-60 text-white font-bold text-xs shadow-md shadow-[#087e83]/20 flex items-center gap-2 active:scale-95 transition-all cursor-pointer"
+                  className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#087e83] hover:bg-[#06686c] disabled:opacity-60 text-white font-bold text-xs shadow-md shadow-[#087e83]/20 flex items-center gap-2 active:scale-95 transition-all cursor-pointer"
                 >
                   {shiftBusy ? <MapPin className="w-4 h-4 animate-pulse" /> : <LogIn className="w-4 h-4" />}
                   <span>{shiftBusy ? 'جاري التحقق من الموقع...' : 'بدأ الشفت'}</span>
@@ -670,7 +801,7 @@ export const AttendanceView: React.FC = () => {
                 type="button"
                 disabled={shiftBusy}
                 onClick={handleClockOut}
-                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white font-bold text-xs shadow-md shadow-rose-600/20 flex items-center gap-2 active:scale-95 transition-all cursor-pointer"
+                className="min-h-[44px] px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white font-bold text-xs shadow-md shadow-rose-600/20 flex items-center gap-2 active:scale-95 transition-all cursor-pointer"
               >
                 {shiftBusy ? <MapPin className="w-4 h-4 animate-pulse" /> : <LogOut className="w-4 h-4" />}
                 <span>{shiftBusy ? 'جاري التحقق من الموقع...' : 'إنهاء الشفت'}</span>
@@ -847,6 +978,15 @@ export const AttendanceView: React.FC = () => {
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${rec.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
                             {rec.status === 'active' ? 'شفت نشط' : 'منتهي'}
                           </span>
+                          {attendanceSyncErrors[rec.id] ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200">
+                              فشل المزامنة
+                            </span>
+                          ) : pendingAttendanceSet.has(rec.id) ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                              محلي — بانتظار المزامنة
+                            </span>
+                          ) : null}
                           {variance && (
                             <span
                               className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
@@ -1131,6 +1271,15 @@ export const AttendanceView: React.FC = () => {
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${rec.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
                             {rec.status === 'active' ? 'على رأس العمل' : 'اكتمل الشفت'}
                           </span>
+                          {attendanceSyncErrors[rec.id] ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200">
+                              فشل المزامنة
+                            </span>
+                          ) : pendingAttendanceSet.has(rec.id) ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                              محلي — بانتظار المزامنة
+                            </span>
+                          ) : null}
                           {variance && (
                             <span
                               className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${

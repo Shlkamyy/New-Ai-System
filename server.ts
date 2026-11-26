@@ -31,6 +31,8 @@ interface ScheduledPushAlert {
   appointmentId?: string;
   triggerAtMs: number;
   sentAtMs?: number;
+  attempts?: number;
+  lastAttemptMs?: number;
   requireInteraction?: boolean;
 }
 
@@ -153,12 +155,21 @@ webpush.setVapidDetails(
 function isValidSubscription(sub: unknown): sub is PushSubscription {
   if (!sub || typeof sub !== 'object') return false;
   const candidate = sub as Partial<PushSubscription>;
+  if (typeof candidate.endpoint !== 'string' || candidate.endpoint.length > 2048) return false;
+  try {
+    const parsed = new URL(candidate.endpoint);
+    if (parsed.protocol !== 'https:') return false;
+  } catch {
+    return false;
+  }
   return (
-    typeof candidate.endpoint === 'string' &&
-    candidate.endpoint.startsWith('https://') &&
     Boolean(candidate.keys) &&
     typeof candidate.keys?.p256dh === 'string' &&
-    typeof candidate.keys?.auth === 'string'
+    candidate.keys.p256dh.length > 0 &&
+    candidate.keys.p256dh.length <= 512 &&
+    typeof candidate.keys?.auth === 'string' &&
+    candidate.keys.auth.length > 0 &&
+    candidate.keys.auth.length <= 256
   );
 }
 
@@ -214,7 +225,11 @@ async function processDuePushAlerts(): Promise<void> {
     }
 
     const dueAlerts = Object.values(store.alerts).filter(
-      a => !a.sentAtMs && a.triggerAtMs <= now
+      a =>
+        !a.sentAtMs &&
+        a.triggerAtMs <= now &&
+        (a.attempts || 0) < 5 &&
+        (!a.lastAttemptMs || now - a.lastAttemptMs >= 30_000)
     );
 
     for (const alert of dueAlerts) {
@@ -231,8 +246,8 @@ async function processDuePushAlerts(): Promise<void> {
         continue;
       }
 
-      // Mark sent optimistically to prevent duplicate sends across ticks
-      alert.sentAtMs = now;
+      alert.lastAttemptMs = now;
+      alert.attempts = (alert.attempts || 0) + 1;
       changed = true;
 
       const res = await deliverPushAlert(device, alert);
@@ -243,8 +258,10 @@ async function processDuePushAlerts(): Promise<void> {
             delete store.alerts[k];
           }
         }
-      } else if (!res.ok) {
-        console.warn(`[WebPush] Failed to send alert ${alert.key}:`, res.error);
+      } else if (res.ok) {
+        alert.sentAtMs = Date.now();
+      } else {
+        console.warn(`[WebPush] Failed to send alert ${alert.key} (attempt ${alert.attempts}/5):`, res.error);
       }
     }
 
@@ -390,19 +407,21 @@ async function startServer(): Promise<void> {
     }
 
     const cleanId = deviceId.trim().slice(0, 128);
+    const cleanStaffId = typeof staffId === 'string' ? staffId.trim().slice(0, 128) : undefined;
+    const cleanStaffName = typeof staffName === 'string' ? staffName.trim().slice(0, 120) : undefined;
     const existingDevice = store.devices[cleanId];
     if (isValidSubscription(subscription)) {
       store.devices[cleanId] = {
         deviceId: cleanId,
-        staffId: typeof staffId === 'string' ? staffId : existingDevice?.staffId || 'unknown',
-        staffName: typeof staffName === 'string' ? staffName : existingDevice?.staffName || 'موظف',
+        staffId: cleanStaffId || existingDevice?.staffId || 'unknown',
+        staffName: cleanStaffName || existingDevice?.staffName || 'موظف',
         subscription,
         notificationChannel: notificationChannel === 'website_only' ? 'website_only' : 'mobile_and_website',
         updatedAt: Date.now()
       };
     } else if (existingDevice) {
-      existingDevice.staffId = typeof staffId === 'string' ? staffId : existingDevice.staffId;
-      existingDevice.staffName = typeof staffName === 'string' ? staffName : existingDevice.staffName;
+      existingDevice.staffId = cleanStaffId || existingDevice.staffId;
+      existingDevice.staffName = cleanStaffName || existingDevice.staffName;
       existingDevice.notificationChannel =
         notificationChannel === 'website_only' ? 'website_only' : 'mobile_and_website';
       existingDevice.updatedAt = Date.now();
@@ -410,7 +429,7 @@ async function startServer(): Promise<void> {
 
     // Cancel resolved appointments across ALL subscribed devices so closed phones don't get stale alerts
     if (Array.isArray(resolvedAppointmentIds) && resolvedAppointmentIds.length > 0) {
-      const resolvedSet = new Set(resolvedAppointmentIds.map(id => String(id)));
+      const resolvedSet = new Set(resolvedAppointmentIds.slice(0, 500).map(id => String(id).slice(0, 128)));
       for (const [k, a] of Object.entries(store.alerts)) {
         if (a.appointmentId && resolvedSet.has(a.appointmentId) && !a.sentAtMs) {
           delete store.alerts[k];
@@ -425,13 +444,27 @@ async function startServer(): Promise<void> {
       return;
     }
 
-    const incoming: IncomingPendingAlert[] = Array.isArray(pendingAlerts) ? pendingAlerts : [];
+    const incoming: IncomingPendingAlert[] = Array.isArray(pendingAlerts) ? pendingAlerts.slice(0, 200) : [];
     const incomingKeys = new Set<string>();
 
     if (device.notificationChannel === 'mobile_and_website') {
       for (const item of incoming) {
-        if (!item || typeof item.alertId !== 'string' || typeof item.triggerAtMs !== 'number') continue;
-        const key = `${cleanId}::${item.alertId}`;
+        if (
+          !item ||
+          typeof item.alertId !== 'string' ||
+          !item.alertId.trim() ||
+          typeof item.triggerAtMs !== 'number' ||
+          !Number.isFinite(item.triggerAtMs) ||
+          typeof item.title !== 'string'
+        ) {
+          continue;
+        }
+        const safeAlertId = item.alertId.trim().slice(0, 128);
+        const safeType =
+          item.type === 'appointment' || item.type === 'shift_start' || item.type === 'shift_end'
+            ? item.type
+            : 'appointment';
+        const key = `${cleanId}::${safeAlertId}`;
         incomingKeys.add(key);
         const existing = store.alerts[key];
         // Preserve sentAtMs if the exact same alert and trigger time were already delivered
@@ -441,16 +474,17 @@ async function startServer(): Promise<void> {
           key,
           deviceId: cleanId,
           staffId: device.staffId,
-          alertId: item.alertId,
-          type: item.type,
-          title: item.title,
-          body: item.body,
-          tag: item.tag,
-          url: item.url || '/?view=staff_alerts',
-          view: item.view || 'staff_alerts',
-          appointmentId: item.appointmentId,
+          alertId: safeAlertId,
+          type: safeType,
+          title: item.title.slice(0, 160),
+          body: typeof item.body === 'string' ? item.body.slice(0, 320) : '',
+          tag: typeof item.tag === 'string' ? item.tag.slice(0, 128) : `clinicflow_${safeAlertId}`,
+          url: typeof item.url === 'string' && item.url.startsWith('/') ? item.url.slice(0, 256) : '/?view=staff_alerts',
+          view: typeof item.view === 'string' ? item.view.slice(0, 64) : 'staff_alerts',
+          appointmentId: typeof item.appointmentId === 'string' ? item.appointmentId.slice(0, 128) : undefined,
           triggerAtMs: item.triggerAtMs,
           sentAtMs: alreadySentSameTrigger ? existing.sentAtMs : undefined,
+          attempts: alreadySentSameTrigger ? existing.attempts : 0,
           requireInteraction: true
         };
       }
@@ -687,9 +721,22 @@ async function startServer(): Promise<void> {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`[ClinicFlow Server] Listening on http://0.0.0.0:${PORT} (mode: ${isProduction ? 'production' : 'development'})`);
   });
+
+  const handleShutdown = () => {
+    if (persistTimer) {
+      clearTimeout(persistTimer);
+      persistTimer = null;
+    }
+    persistStore();
+    server.close(() => {
+      process.exit(0);
+    });
+  };
+  process.once('SIGINT', handleShutdown);
+  process.once('SIGTERM', handleShutdown);
 }
 
 void startServer();

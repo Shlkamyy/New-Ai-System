@@ -112,12 +112,62 @@ function stripCloudMeta<T extends object>(raw: T): Omit<T, keyof CloudSyncMeta> 
   return copy as Omit<T, keyof CloudSyncMeta>;
 }
 
+function extractFirestoreErrorInfo(err: unknown): { code?: string; message: string } {
+  if (!err) return { message: 'خطأ غير معروف في الاتصال بالسحابة' };
+  const rawCode = typeof err === 'object' ? (err as { code?: unknown }).code : undefined;
+  const code = typeof rawCode === 'string' ? rawCode : undefined;
+  const rawMessage = err instanceof Error ? err.message : String(err);
+
+  if (rawMessage.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(rawMessage) as { error?: unknown; path?: unknown };
+      if (typeof parsed.error === 'string' && parsed.error) {
+        return { code, message: parsed.error };
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return { code, message: rawMessage };
+}
+
+export function classifyCloudSyncError(err: unknown): {
+  kind: 'permanent' | 'transient';
+  message: string;
+  code?: string;
+} {
+  const { code, message } = extractFirestoreErrorInfo(err);
+  const lower = message.toLowerCase();
+  const normalizedCode = (code || '').toLowerCase();
+
+  const permanentCodes = new Set([
+    'permission-denied',
+    'invalid-argument',
+    'failed-precondition',
+    'out-of-range',
+    'not-found',
+    'already-exists'
+  ]);
+
+  if (
+    permanentCodes.has(normalizedCode) ||
+    lower.includes('permission-denied') ||
+    lower.includes('missing or insufficient permissions') ||
+    lower.includes('invalid-argument') ||
+    lower.includes('invalid_argument') ||
+    lower.includes('exceeds the maximum allowed size') ||
+    lower.includes('document too large')
+  ) {
+    return { kind: 'permanent', message, code };
+  }
+
+  return { kind: 'transient', message, code };
+}
+
 function isPermissionDeniedError(err: unknown): boolean {
-  if (!err || typeof err !== 'object') return false;
-  const code = (err as { code?: unknown }).code;
+  const { code, message } = extractFirestoreErrorInfo(err);
   if (code === 'permission-denied') return true;
-  const msg = err instanceof Error ? err.message : String(err);
-  return msg.includes('permission-denied') || msg.includes('Missing or insufficient permissions');
+  return message.includes('permission-denied') || message.includes('Missing or insufficient permissions');
 }
 
 function buildOverlayPayloadWithSizeGuard<T extends { id: string }>(
@@ -529,8 +579,23 @@ export async function upsertCloudDoc<T extends object>(
               return;
             }
             if (existingCreated instanceof Timestamp) {
+              const preservedAttendanceFields =
+                collectionName === 'attendance'
+                  ? {
+                      id: typeof existingRaw?.id === 'string' && existingRaw.id ? existingRaw.id : docId,
+                      userId:
+                        typeof existingRaw?.userId === 'string' && existingRaw.userId
+                          ? existingRaw.userId
+                          : cleanData.userId,
+                      userName:
+                        typeof existingRaw?.userName === 'string' && existingRaw.userName
+                          ? existingRaw.userName
+                          : cleanData.userName
+                    }
+                  : {};
               const retryPayload = {
                 ...cleanData,
+                ...preservedAttendanceFields,
                 ownerEmail:
                   typeof existingRaw?.ownerEmail === 'string' && existingRaw.ownerEmail
                     ? existingRaw.ownerEmail
@@ -1019,7 +1084,17 @@ function nextQueueToken(): number {
   return Date.now() * 1000 + tokenSequence;
 }
 
+const queueOpsListeners = new Set<(ops: PendingCloudOp[]) => void>();
+
 function notifyPendingQueueListeners(count: number): void {
+  const snapshot = pendingQueueCache !== null ? [...pendingQueueCache] : [];
+  queueOpsListeners.forEach(listener => {
+    try {
+      listener(snapshot);
+    } catch {
+      // ignore listener errors
+    }
+  });
   if (lastNotifiedCount === count) return;
   lastNotifiedCount = count;
   queueListeners.forEach(listener => {
@@ -1032,9 +1107,14 @@ function notifyPendingQueueListeners(count: number): void {
 }
 
 function schedulePendingQueueNotify(prevCount: number, nextCount: number): void {
-  if (prevCount === nextCount) return;
-  // Notify immediately when transitioning 0 <-> >0 so the top banner shows/clears without delay
-  if (nextCount === 0 || prevCount === 0) {
+  // Always notify immediately for critical transitions (0 <-> >0) or attendance queue updates
+  const hasAttendanceOp =
+    Array.isArray(pendingQueueCache) &&
+    pendingQueueCache.some(op => op.collectionName === 'attendance');
+  if (prevCount === nextCount && !hasAttendanceOp) {
+    // Still keep queueOpsListeners notified via timer if non-attendance items replaced
+  }
+  if (nextCount === 0 || prevCount === 0 || hasAttendanceOp) {
     if (queueNotifyTimer !== null) {
       clearTimeout(queueNotifyTimer);
       queueNotifyTimer = null;
@@ -1172,10 +1252,23 @@ export function getPendingCloudCount(): number {
   return readPendingQueue().length;
 }
 
+export function getPendingAttendanceIds(): string[] {
+  return readPendingQueue()
+    .filter(op => op.collectionName === 'attendance')
+    .map(op => op.docId);
+}
+
 export function subscribePendingQueueChange(listener: (count: number) => void): () => void {
   queueListeners.add(listener);
   return () => {
     queueListeners.delete(listener);
+  };
+}
+
+export function subscribePendingQueueOpsChange(listener: (ops: PendingCloudOp[]) => void): () => void {
+  queueOpsListeners.add(listener);
+  return () => {
+    queueOpsListeners.delete(listener);
   };
 }
 
@@ -1239,7 +1332,8 @@ export function enqueuePendingCloudOps(inputs: PendingCloudOpInput[]): PendingCl
     createdOps.push(op);
   }
 
-  writePendingQueue(current, { immediatePersist: current.length <= 10 });
+  const hasAttendanceInput = inputs.some(i => i.collectionName === 'attendance');
+  writePendingQueue(current, { immediatePersist: current.length <= 20 || hasAttendanceInput });
   return createdOps;
 }
 
@@ -1249,7 +1343,7 @@ export function dequeuePendingCloudOpIfMatch(key: string, token: number): void {
   if (idx === -1) return;
   const current = [...existing];
   current.splice(idx, 1);
-  writePendingQueue(current);
+  writePendingQueue(current, { immediatePersist: true });
 }
 
 export function dequeuePendingCloudOpsBatch(entries: Array<{ key: string; token: number }>): void {
@@ -1262,7 +1356,7 @@ export function dequeuePendingCloudOpsBatch(entries: Array<{ key: string; token:
   }
   const next = existing.filter(op => tokenByKey.get(op.key) !== op.token);
   if (next.length !== existing.length) {
-    writePendingQueue(next);
+    writePendingQueue(next, { immediatePersist: true });
   }
 }
 

@@ -211,7 +211,7 @@ service cloud.firestore {
         ]) &&
         data.keys().hasOnly([
           'id', 'title', 'description', 'dueDate', 'assignedTo', 'priority', 'recurrence',
-          'isCompleted', 'adminCompleted', 'completedAt', 'completedBy', 'completedDates',
+          'isCompleted', 'adminCompleted', 'completedAt', 'completedBy', 'completionSource', 'completedDates',
           'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
         ]) &&
         hasValidBaseMeta(data) &&
@@ -226,6 +226,7 @@ service cloud.firestore {
         (!('description' in data) || (data.description is string && data.description.size() <= 1000)) &&
         (!('completedAt' in data) || (data.completedAt is string && data.completedAt.size() <= 40)) &&
         (!('completedBy' in data) || (data.completedBy is string && data.completedBy.size() <= 120)) &&
+        (!('completionSource' in data) || (data.completionSource is string && data.completionSource.size() <= 120)) &&
         (!('completedDates' in data) || data.completedDates is map);
     }
 
@@ -647,7 +648,7 @@ service cloud.firestore {
           isAdmin() ||
           incoming().diff(existing()).affectedKeys().hasOnly([
             'title', 'description', 'dueDate', 'assignedTo', 'priority', 'recurrence',
-            'isCompleted', 'adminCompleted', 'completedAt', 'completedBy', 'completedDates',
+            'isCompleted', 'adminCompleted', 'completedAt', 'completedBy', 'completionSource', 'completedDates',
             'allowedEmails', 'updatedAt'
           ])
         );
@@ -893,8 +894,9 @@ service cloud.firestore {
         incoming().updatedAt == request.time &&
         incoming().diff(existing()).affectedKeys().hasOnly([
           'previousStatus', 'newStatus', 'notes', 'audioDataUrl', 'audioDurationSeconds',
-          'feedbackOutcome', 'feedbackDate', 'reverted', 'revertedAt', 'revertedBy',
-          'allowedEmails', 'updatedAt'
+          'feedbackOutcome', 'feedbackDate', 'taskType', 'finishedWorkAction',
+          'finishedWorkAttempt', 'snoozeUntilDate', 'actionDate',
+          'reverted', 'revertedAt', 'revertedBy', 'allowedEmails', 'updatedAt'
         ]);
       allow delete: if isClinicSession() && isValidId(logId) && hasClinicResourceOwner();
     }

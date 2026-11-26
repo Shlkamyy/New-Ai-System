@@ -50,7 +50,12 @@ export const ExcelImportView: React.FC = () => {
         setIsProcessing(false);
       }
     };
+    reader.onerror = () => {
+      setImportErrorMessage('تعذر قراءة الملف المختار. يرجى المحاولة مرة أخرى.');
+      setIsProcessing(false);
+    };
     reader.readAsBinaryString(file);
+    e.target.value = '';
   };
 
   // Analysis of parsed data

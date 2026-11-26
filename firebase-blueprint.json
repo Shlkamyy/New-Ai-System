@@ -144,6 +144,7 @@
         "adminCompleted": { "type": "boolean" },
         "completedAt": { "type": "string", "maxLength": 40 },
         "completedBy": { "type": "string", "maxLength": 120 },
+        "completionSource": { "type": "string", "maxLength": 120 },
         "completedDates": { "type": "object" },
         "ownerEmail": { "type": "string", "maxLength": 120 },
         "allowedEmails": { "type": "array" },

@@ -119,6 +119,7 @@ import {
   enqueuePendingCloudOps,
   fetchCollectionFromServer,
   flushPendingQueuePersistenceNow,
+  getPendingAttendanceIds,
   getPendingCloudCount,
   getPendingCloudOps,
   mergeSyncOverlay,
@@ -129,9 +130,18 @@ import {
   subscribeCollection,
   subscribeOverlayCollection,
   subscribePendingQueueChange,
+  subscribePendingQueueOpsChange,
+  classifyCloudSyncError,
   upsertCloudDoc,
   upsertSyncOverlay
 } from '../utils/cloudSync';
+import {
+  canRunMidnightAutoEndForRecord,
+  createDeterministicAttendanceId,
+  findActiveShiftForUser,
+  reconcileAttendanceRecords,
+  sortAttendanceRecordsDesc
+} from '../utils/attendance';
 import {
   ensurePushSubscription,
   scheduleServerTestPush,
@@ -634,10 +644,27 @@ interface ClinicContextType {
     manualReason?: string,
     manualOverrides?: { userId?: string; userName?: string; date?: string; clockIn?: string },
     alertSource?: string
-  ) => { success: boolean; error?: string };
-  clockOut: (recordId: string, alertSource?: string) => void;
+  ) => {
+    success: boolean;
+    error?: string;
+    record?: AttendanceRecord;
+    syncPromise?: Promise<{ syncedToCloud: boolean; queuedOffline: boolean; permanentError?: string }>;
+  };
+  clockOut: (
+    recordId: string,
+    alertSource?: string,
+    specificTime24?: string
+  ) => {
+    success: boolean;
+    error?: string;
+    syncPromise?: Promise<{ syncedToCloud: boolean; queuedOffline: boolean; permanentError?: string }>;
+  };
   editAttendanceRecord: (id: string, updates: Partial<AttendanceRecord>) => void;
   deleteAttendanceRecord: (id: string) => void;
+  pendingAttendanceIds: string[];
+  attendanceSyncErrors: Record<string, string>;
+  retryAttendanceSync: () => Promise<{ success: boolean; syncedCount: number; failedCount: number; error?: string }>;
+  refreshAttendanceFromServer: (force?: boolean) => Promise<void>;
   editingAttendanceId: string | null;
   openAttendanceShiftEdit: (recordId: string) => void;
   clearEditingAttendanceId: () => void;
@@ -1009,6 +1036,70 @@ function deduplicateInvoicesAndPayments(
   };
 }
 
+function roundMoney(val: unknown): number {
+  const n = Number(val);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+const LOCKED_GUEST_PERMISSIONS: StaffPermissions = {
+  viewAppointments: false,
+  addAppointments: false,
+  editAppointments: false,
+  deleteAppointments: false,
+  appointmentsOwnOnly: true,
+  viewPatients: false,
+  addPatients: false,
+  editPatients: false,
+  deletePatients: false,
+  patientsOwnOnly: true,
+  viewClinicalNotes: false,
+  addClinicalNotes: false,
+  editClinicalNotes: false,
+  deleteClinicalNotes: false,
+  hideAdminNotes: true,
+  viewInvoicesPayments: false,
+  addInvoicesPayments: false,
+  editInvoicesPayments: false,
+  deleteInvoicesPayments: false,
+  viewFinancialReports: false,
+  viewExpenses: false,
+  addExpenses: false,
+  editExpenses: false,
+  deleteExpenses: false,
+  viewTasks: false,
+  addTasks: false,
+  editTasks: false,
+  deleteTasks: false,
+  viewProcedures: false,
+  addProcedures: false,
+  editProcedures: false,
+  deleteProcedures: false,
+  manualAttendance: false,
+  manageSettings: false
+};
+
+function createLockedGuestUser(userId?: string): StaffMember {
+  return {
+    id: userId || 'unauthenticated',
+    name: 'جلسة غير مصرح بها',
+    username: '',
+    password: '',
+    role: 'receptionist',
+    jobTitle: 'غير مسجل',
+    phone: '',
+    isDisabled: true,
+    permissions: LOCKED_GUEST_PERMISSIONS
+  };
+}
+
+function hasStaffPermission(
+  staff: StaffMember | undefined,
+  permission: keyof StaffPermissions
+): boolean {
+  return Boolean(staff && !staff.isDisabled && staff.permissions?.[permission]);
+}
+
 function applyFinancialTotalsToPatients(
   pats: Patient[],
   invs: Invoice[],
@@ -1020,7 +1111,7 @@ function applyFinancialTotalsToPatients(
   invs.forEach(inv => {
     allInvoicePatIds.add(inv.patientId);
     if (inv.status !== 'voided') {
-      billedMap.set(inv.patientId, (billedMap.get(inv.patientId) || 0) + (Number(inv.netTotal) || 0));
+      billedMap.set(inv.patientId, roundMoney((billedMap.get(inv.patientId) || 0) + roundMoney(inv.netTotal)));
     }
   });
 
@@ -1029,7 +1120,7 @@ function applyFinancialTotalsToPatients(
   pays.forEach(pay => {
     allPaymentPatIds.add(pay.patientId);
     if (pay.status !== 'voided') {
-      paidMap.set(pay.patientId, (paidMap.get(pay.patientId) || 0) + (Number(pay.amount) || 0));
+      paidMap.set(pay.patientId, roundMoney((paidMap.get(pay.patientId) || 0) + roundMoney(pay.amount)));
     }
   });
 
@@ -1039,9 +1130,9 @@ function applyFinancialTotalsToPatients(
     const hasAnyPay = allPaymentPatIds.has(pat.id);
     if (!hasAnyInv && !hasAnyPay) return pat;
 
-    const newBilled = hasAnyInv ? (billedMap.get(pat.id) || 0) : pat.totalBilled;
-    const newPaid = hasAnyPay ? (paidMap.get(pat.id) || 0) : pat.totalPaid;
-    const newOutstanding = Math.max(0, newBilled - newPaid);
+    const newBilled = hasAnyInv ? roundMoney(billedMap.get(pat.id) || 0) : roundMoney(pat.totalBilled);
+    const newPaid = hasAnyPay ? roundMoney(paidMap.get(pat.id) || 0) : roundMoney(pat.totalPaid);
+    const newOutstanding = Math.max(0, roundMoney(newBilled - newPaid));
 
     if (
       pat.totalBilled === newBilled &&
@@ -1331,9 +1422,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     )
   );
   const [attendance, setAttendance] = useState<AttendanceRecord[]>(() =>
-    applyPendingDocOps('attendance', loadFromStorage('attendance', INITIAL_ATTENDANCE)).sort((a, b) =>
-      (b.date || '').localeCompare(a.date || '')
-    )
+    reconcileAttendanceRecords(applyPendingDocOps('attendance', loadFromStorage('attendance', INITIAL_ATTENDANCE)))
   );
   const [whatsappTemplates, setWhatsappTemplates] = useState<WhatsAppTemplate[]>(() =>
     applyPendingDocOps('whatsapp_templates', loadFromStorage('templates', INITIAL_TEMPLATES))
@@ -1495,6 +1584,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     content: string,
     options?: { durationDays?: number | null; durationLabel?: string }
   ) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const targetStaff = staffMembers.find(s => s.id === staffId);
     const staffName = staffId === 'all' ? 'جميع الموظفين' : (targetStaff?.name || 'موظف');
     const nowMs = Date.now();
@@ -1552,6 +1645,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const repeatStaffComment = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const now = new Date().toISOString();
     const target = staffCommentsRef.current.find(c => c.id === id);
     if (!target) return;
@@ -1586,6 +1683,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const unrepeatStaffComment = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const target = staffCommentsRef.current.find(c => c.id === id);
     if (!target) return;
     const currentCount = target.repeatCount || 1;
@@ -1624,6 +1725,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const hideStaffComment = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const target = staffCommentsRef.current.find(c => c.id === id);
     if (!target) return;
     const now = new Date().toISOString();
@@ -1655,6 +1760,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     id: string,
     options?: { durationDays?: number | null; durationLabel?: string }
   ) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const target = staffCommentsRef.current.find(c => c.id === id);
     if (!target) return;
     const nextDays =
@@ -1706,6 +1815,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteStaffComment = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const existing = staffCommentsRef.current.find(c => c.id === id);
     const nextComments = staffCommentsRef.current.filter(c => c.id !== id);
     staffCommentsRef.current = nextComments;
@@ -1726,13 +1839,35 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
 
+  const redactSensitiveAuditFields = (value: unknown, depth: number = 0): unknown => {
+    if (value === null || value === undefined || depth > 5) return value;
+    if (Array.isArray(value)) {
+      return value.map(item => redactSensitiveAuditFields(item, depth + 1));
+    }
+    if (typeof value === 'object') {
+      const obj = value as Record<string, unknown>;
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(obj)) {
+        if (k === 'password' || k === 'recoveryPin') {
+          if (v !== undefined && v !== null && v !== '') {
+            out[k] = '[redacted]';
+          }
+          continue;
+        }
+        out[k] = redactSensitiveAuditFields(v, depth + 1);
+      }
+      return out;
+    }
+    return value;
+  };
+
   const sanitizeAuditPayload = (data: unknown): Record<string, unknown> | undefined => {
     if (data === undefined || data === null) return undefined;
     if (typeof data !== 'object' || Array.isArray(data)) {
       return { value: data } as Record<string, unknown>;
     }
     try {
-      const cloned = JSON.parse(JSON.stringify(data)) as Record<string, unknown>;
+      const cloned = redactSensitiveAuditFields(JSON.parse(JSON.stringify(data))) as Record<string, unknown>;
       if (typeof cloned.audioDataUrl === 'string' && cloned.audioDataUrl.length > 200) {
         cloned.audioDataUrl = '[audio]';
       }
@@ -1783,11 +1918,11 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   };
 
-  const resolveActiveStaffFromRefs = (): StaffMember =>
-    staffMembersRef.current.find(s => s.id === currentUserIdRef.current && !s.isDisabled) ||
-    staffMembersRef.current.find(s => !s.isDisabled) ||
-    staffMembersRef.current[0] ||
-    INITIAL_STAFF_MEMBERS[0];
+  const resolveActiveStaffFromRefs = (): StaffMember => {
+    const uid = currentUserIdRef.current;
+    if (!uid) return createLockedGuestUser();
+    return staffMembersRef.current.find(s => s.id === uid && !s.isDisabled) || createLockedGuestUser(uid);
+  };
 
   const logAuditAction = (
     action: AuditLogEntry['action'],
@@ -1834,6 +1969,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteAuditLogEntry = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const updated = auditLogsRef.current.filter(l => l.id !== id);
     auditLogsRef.current = updated;
     saveToStorage('audit_logs', updated);
@@ -1842,6 +1981,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const clearAuditLogs = () => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const existingIds = auditLogsRef.current.map(l => l.id);
     auditLogsRef.current = [];
     saveToStorage('audit_logs', []);
@@ -1898,11 +2041,26 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [cloudError, setCloudError] = useState<string | null>(null);
   const [cloudNeedsConsoleSetup, setCloudNeedsConsoleSetup] = useState<boolean>(false);
   const [pendingCloudCount, setPendingCloudCount] = useState<number>(() => getPendingCloudCount());
+  const [pendingAttendanceIds, setPendingAttendanceIds] = useState<string[]>(() => getPendingAttendanceIds());
+  const [attendanceSyncErrors, setAttendanceSyncErrors] = useState<Record<string, string>>({});
+  const failedAttendanceRecordsRef = useRef<Map<string, AttendanceRecord>>(new Map());
+  const clockInInFlightRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    return subscribePendingQueueChange(count => {
+    const syncQueueDerived = (ops: PendingCloudOp[]) => {
+      setPendingCloudCount(ops.length);
+      setPendingAttendanceIds(ops.filter(o => o.collectionName === 'attendance').map(o => o.docId));
+    };
+    const unsubCount = subscribePendingQueueChange(count => {
       setPendingCloudCount(count);
     });
+    const unsubOps = subscribePendingQueueOpsChange(ops => {
+      syncQueueDerived(ops);
+    });
+    return () => {
+      unsubCount();
+      unsubOps();
+    };
   }, []);
 
   // Refs for synchronous mutation reads & cloud writes
@@ -1965,6 +2123,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const pendingConfigSyncRef = useRef(false);
   const flushingQueueRef = useRef<Promise<void> | null>(null);
+  const needsAnotherFlushPassRef = useRef(false);
   const retryBackoffMsRef = useRef(0);
   const lastRetryAtRef = useRef(0);
 
@@ -1998,6 +2157,132 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  const recordAttendanceSyncError = (docId: string, record: AttendanceRecord | undefined, message: string) => {
+    if (record) {
+      failedAttendanceRecordsRef.current.set(docId, record);
+    }
+    setAttendanceSyncErrors(prev => (prev[docId] === message ? prev : { ...prev, [docId]: message }));
+  };
+
+  const clearAttendanceSyncError = (docId: string) => {
+    failedAttendanceRecordsRef.current.delete(docId);
+    setAttendanceSyncErrors(prev => {
+      if (!(docId in prev)) return prev;
+      const next = { ...prev };
+      delete next[docId];
+      return next;
+    });
+  };
+
+  const syncAttendanceRecordNow = async (
+    record: AttendanceRecord
+  ): Promise<{ syncedToCloud: boolean; queuedOffline: boolean; permanentError?: string }> => {
+    const [queuedOp] = enqueuePendingCloudOps([
+      {
+        kind: 'doc_upsert',
+        collectionName: 'attendance',
+        docId: record.id,
+        data: record as unknown as Record<string, unknown>
+      }
+    ]);
+    flushPendingQueuePersistenceNow();
+
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return { syncedToCloud: false, queuedOffline: true };
+    }
+
+    if (!cloudUserRef.current && !auth.currentUser) {
+      if (!cloudNeedsConsoleSetupRef.current && retryCloudConnectRef.current) {
+        const connectTimeout = new Promise<{ success: boolean }>((resolve) =>
+          window.setTimeout(() => resolve({ success: false }), 4500)
+        );
+        await Promise.race([retryCloudConnectRef.current(), connectTimeout]);
+      }
+      if (!cloudUserRef.current && !auth.currentUser) {
+        return { syncedToCloud: false, queuedOffline: true };
+      }
+    }
+
+    const emails = normalizeAllowedEmails(allowedCloudEmailsRef.current);
+    try {
+      await upsertCloudDoc(
+        'attendance',
+        record.id,
+        record as unknown as Record<string, unknown>,
+        emails
+      );
+      if (queuedOp) {
+        dequeuePendingCloudOpsBatch([{ key: queuedOp.key, token: queuedOp.token }]);
+      }
+      clearAttendanceSyncError(record.id);
+      setCloudError(null);
+      if (getPendingCloudCount() > 0) {
+        void flushPendingCloudOps();
+      }
+      return { syncedToCloud: true, queuedOffline: false };
+    } catch (err) {
+      const classified = classifyCloudSyncError(err);
+      setCloudError(classified.message);
+      if (classified.kind === 'permanent') {
+        if (queuedOp) {
+          dequeuePendingCloudOpsBatch([{ key: queuedOp.key, token: queuedOp.token }]);
+        }
+        recordAttendanceSyncError(record.id, record, classified.message);
+        console.error('Permanent attendance cloud sync error:', classified.message);
+        return { syncedToCloud: false, queuedOffline: false, permanentError: classified.message };
+      }
+      console.warn('Transient attendance cloud sync error (queued locally):', classified.message);
+      return { syncedToCloud: false, queuedOffline: true };
+    }
+  };
+
+  const retryAttendanceSync = async (): Promise<{
+    success: boolean;
+    syncedCount: number;
+    failedCount: number;
+    error?: string;
+  }> => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return { success: false, syncedCount: 0, failedCount: 0, error: 'الجهاز غير متصل بالإنترنت حالياً' };
+    }
+
+    const failedRecords = Array.from(failedAttendanceRecordsRef.current.values());
+    if (failedRecords.length > 0) {
+      enqueuePendingCloudOps(
+        failedRecords.map(rec => ({
+          kind: 'doc_upsert' as const,
+          collectionName: 'attendance',
+          docId: rec.id,
+          data: rec as unknown as Record<string, unknown>
+        }))
+      );
+      failedAttendanceRecordsRef.current.clear();
+      setAttendanceSyncErrors({});
+    }
+
+    if (!cloudUserRef.current && !auth.currentUser) {
+      const conn = await retryCloudConnect();
+      if (!conn.success) {
+        return { success: false, syncedCount: 0, failedCount: getPendingAttendanceIds().length, error: conn.error };
+      }
+    }
+
+    const beforeIds = new Set(getPendingAttendanceIds());
+    await flushPendingCloudOps();
+    const afterIds = new Set(getPendingAttendanceIds());
+    const syncedCount = Array.from(beforeIds).filter(id => !afterIds.has(id)).length;
+    const failedCount = afterIds.size + Object.keys(attendanceSyncErrors).length;
+    if (failedCount === 0) {
+      await refreshAttendanceFromServer(true);
+    }
+    return {
+      success: failedCount === 0,
+      syncedCount,
+      failedCount,
+      ...(failedCount > 0 ? { error: 'بعض سجلات الحضور لم تكتمل مزامنتها بعد' } : {})
+    };
+  };
+
   const dispatchCloudOps = (
     inputs: PendingCloudOpInput[],
     overrideEmails?: string[]
@@ -2011,25 +2296,46 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
       return Promise.resolve();
     }
+    if (flushingQueueRef.current) {
+      needsAnotherFlushPassRef.current = true;
+    }
     if (queuedOps.length > 6) {
       return flushPendingCloudOps();
     }
     const emails = normalizeAllowedEmails(overrideEmails ?? allowedCloudEmailsRef.current);
     const completedEntries: Array<{ key: string; token: number }> = [];
+    const permanentEntries: Array<{ key: string; token: number }> = [];
+    let firstErrorMsg: string | null = null;
     return Promise.allSettled(
       queuedOps.map(async op => {
-        await executeSingleCloudOpOnly(op, emails);
-        completedEntries.push({ key: op.key, token: op.token });
+        try {
+          await executeSingleCloudOpOnly(op, emails);
+          completedEntries.push({ key: op.key, token: op.token });
+          if (op.collectionName === 'attendance') {
+            clearAttendanceSyncError(op.docId);
+          }
+        } catch (err) {
+          const classified = classifyCloudSyncError(err);
+          firstErrorMsg = firstErrorMsg || classified.message;
+          if (classified.kind === 'permanent') {
+            permanentEntries.push({ key: op.key, token: op.token });
+            if (op.collectionName === 'attendance' && op.kind === 'doc_upsert') {
+              recordAttendanceSyncError(op.docId, op.data as unknown as AttendanceRecord, classified.message);
+            }
+          }
+          throw err;
+        }
       })
     ).then(results => {
-      if (completedEntries.length > 0) {
-        dequeuePendingCloudOpsBatch(completedEntries);
+      const toRemove = [...completedEntries, ...permanentEntries];
+      if (toRemove.length > 0) {
+        dequeuePendingCloudOpsBatch(toRemove);
       }
       const rejected = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
       if (rejected) {
-        const msg = rejected.reason instanceof Error ? rejected.reason.message : String(rejected.reason);
+        const msg = firstErrorMsg || (rejected.reason instanceof Error ? rejected.reason.message : String(rejected.reason));
         setCloudError(msg);
-        console.error('Queued cloud sync error (kept in local retry queue):', rejected.reason);
+        console.error('Queued cloud sync error:', rejected.reason);
       } else {
         setCloudError(null);
         retryBackoffMsRef.current = 0;
@@ -2039,89 +2345,111 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const flushPendingCloudOps = (): Promise<void> => {
     if (!cloudUserRef.current && !auth.currentUser) return Promise.resolve();
-    if (flushingQueueRef.current) return flushingQueueRef.current;
+    if (flushingQueueRef.current) {
+      needsAnotherFlushPassRef.current = true;
+      return flushingQueueRef.current;
+    }
 
     const task = (async () => {
-      const pending = getPendingCloudOps();
-      if (pending.length === 0) {
-        retryBackoffMsRef.current = 0;
-        return;
-      }
-      const emails = normalizeAllowedEmails(allowedCloudEmailsRef.current);
       let hadError = false;
+      do {
+        needsAnotherFlushPassRef.current = false;
+        const pending = getPendingCloudOps();
+        if (pending.length === 0) {
+          retryBackoffMsRef.current = 0;
+          break;
+        }
+        const emails = normalizeAllowedEmails(allowedCloudEmailsRef.current);
 
-      const overlayGroups = new Map<OverlayCollectionName, PendingOverlayOp[]>();
-      const remainingOps: PendingCloudOp[] = [];
-      for (const op of pending) {
-        if (op.kind === 'overlay') {
-          let list = overlayGroups.get(op.collectionName);
-          if (!list) {
-            list = [];
-            overlayGroups.set(op.collectionName, list);
+        const overlayGroups = new Map<OverlayCollectionName, PendingOverlayOp[]>();
+        const remainingOps: PendingCloudOp[] = [];
+        for (const op of pending) {
+          if (op.kind === 'overlay') {
+            let list = overlayGroups.get(op.collectionName);
+            if (!list) {
+              list = [];
+              overlayGroups.set(op.collectionName, list);
+            }
+            list.push(op);
+          } else {
+            remainingOps.push(op);
           }
-          list.push(op);
-        } else {
-          remainingOps.push(op);
         }
-      }
 
-      // 1. Batch overlay operations per collection in smooth chunks of 25 with UI yields
-      for (const [colName, ops] of overlayGroups.entries()) {
-        if (ops.length < 2) {
-          remainingOps.push(...ops);
-          continue;
+        // 1. Batch overlay operations per collection in smooth chunks of 25 with UI yields
+        for (const [colName, ops] of overlayGroups.entries()) {
+          if (ops.length < 2) {
+            remainingOps.push(...ops);
+            continue;
+          }
+          const CHUNK_SIZE = 25;
+          for (let i = 0; i < ops.length; i += CHUNK_SIZE) {
+            if (!cloudUserRef.current && !auth.currentUser) break;
+            const chunk = ops.slice(i, i + CHUNK_SIZE);
+            try {
+              await batchUpsertSyncOverlay(
+                colName,
+                chunk.map(op => ({
+                  record: op.record as { id: string },
+                  isDeleted: op.isDeleted
+                })),
+                emails
+              );
+              dequeuePendingCloudOpsBatch(chunk.map(op => ({ key: op.key, token: op.token })));
+            } catch (err) {
+              hadError = true;
+              const classified = classifyCloudSyncError(err);
+              setCloudError(classified.message);
+              console.error('Batch overlay flush error for', colName, err);
+            }
+            await yieldToMainThread();
+          }
         }
-        const CHUNK_SIZE = 25;
-        for (let i = 0; i < ops.length; i += CHUNK_SIZE) {
+
+        // 2. Process remaining doc/single-overlay ops in concurrent micro-batches of 6
+        const CONCURRENCY = 6;
+        for (let i = 0; i < remainingOps.length; i += CONCURRENCY) {
           if (!cloudUserRef.current && !auth.currentUser) break;
-          const chunk = ops.slice(i, i + CHUNK_SIZE);
-          try {
-            await batchUpsertSyncOverlay(
-              colName,
-              chunk.map(op => ({
-                record: op.record as { id: string },
-                isDeleted: op.isDeleted
-              })),
-              emails
-            );
-            dequeuePendingCloudOpsBatch(chunk.map(op => ({ key: op.key, token: op.token })));
-          } catch (err) {
-            hadError = true;
-            const msg = err instanceof Error ? err.message : String(err);
-            setCloudError(msg);
-            console.error('Batch overlay flush error for', colName, err);
+          const slice = remainingOps.slice(i, i + CONCURRENCY);
+          const completedEntries: Array<{ key: string; token: number }> = [];
+          const permanentEntries: Array<{ key: string; token: number }> = [];
+          const results = await Promise.allSettled(
+            slice.map(async op => {
+              try {
+                await executeSingleCloudOpOnly(op, emails);
+                completedEntries.push({ key: op.key, token: op.token });
+                if (op.collectionName === 'attendance') {
+                  clearAttendanceSyncError(op.docId);
+                }
+              } catch (err) {
+                const classified = classifyCloudSyncError(err);
+                if (classified.kind === 'permanent') {
+                  permanentEntries.push({ key: op.key, token: op.token });
+                  if (op.collectionName === 'attendance' && op.kind === 'doc_upsert') {
+                    recordAttendanceSyncError(op.docId, op.data as unknown as AttendanceRecord, classified.message);
+                  }
+                }
+                throw err;
+              }
+            })
+          );
+          const toRemove = [...completedEntries, ...permanentEntries];
+          if (toRemove.length > 0) {
+            dequeuePendingCloudOpsBatch(toRemove);
           }
-          await yieldToMainThread();
-        }
-      }
-
-      // 2. Process remaining doc/single-overlay ops in concurrent micro-batches of 6
-      const CONCURRENCY = 6;
-      for (let i = 0; i < remainingOps.length; i += CONCURRENCY) {
-        if (!cloudUserRef.current && !auth.currentUser) break;
-        const slice = remainingOps.slice(i, i + CONCURRENCY);
-        const completedEntries: Array<{ key: string; token: number }> = [];
-        const results = await Promise.allSettled(
-          slice.map(async op => {
-            await executeSingleCloudOpOnly(op, emails);
-            completedEntries.push({ key: op.key, token: op.token });
-          })
-        );
-        if (completedEntries.length > 0) {
-          dequeuePendingCloudOpsBatch(completedEntries);
-        }
-        for (const r of results) {
-          if (r.status === 'rejected') {
-            hadError = true;
-            const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
-            setCloudError(msg);
-            console.error('Pending queue flush error:', r.reason);
+          for (const r of results) {
+            if (r.status === 'rejected') {
+              hadError = true;
+              const classified = classifyCloudSyncError(r.reason);
+              setCloudError(classified.message);
+              console.error('Pending queue flush error:', r.reason);
+            }
+          }
+          if (i + CONCURRENCY < remainingOps.length) {
+            await yieldToMainThread();
           }
         }
-        if (i + CONCURRENCY < remainingOps.length) {
-          await yieldToMainThread();
-        }
-      }
+      } while (needsAnotherFlushPassRef.current && (cloudUserRef.current || auth.currentUser));
 
       if (!hadError && getPendingCloudCount() === 0) {
         retryBackoffMsRef.current = 0;
@@ -2134,6 +2462,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     })().finally(() => {
       flushingQueueRef.current = null;
+      needsAnotherFlushPassRef.current = false;
     });
 
     flushingQueueRef.current = task;
@@ -2195,6 +2524,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateClinicWorkingHours = (start: number, end: number) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const prevStart = clinicStartHourRef.current;
     const prevEnd = clinicEndHourRef.current;
     setClinicStartHour(start);
@@ -3124,9 +3457,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       const freshItems = await fetchCollectionFromServer<AttendanceRecord>('attendance');
       setCloudAttendanceReady(true);
-      const merged = applyPendingDocOps('attendance', freshItems).sort((a, b) =>
-        (b.date || '').localeCompare(a.date || '')
-      );
+      const merged = reconcileAttendanceRecords(applyPendingDocOps('attendance', freshItems));
       attendanceRef.current = merged;
       saveToStorage('attendance', merged);
       setAttendance(merged);
@@ -3231,10 +3562,16 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         if (cancelled) return;
 
-        const handleSnapErr = (err: Error) => {
-          listenersActiveRef.current = false;
-          setCloudSynced(false);
-          setCloudError(err.message);
+        const handleCollectionSnapErr = (collectionName: string) => (err: Error) => {
+          const classified = classifyCloudSyncError(err);
+          setCloudError(`${collectionName}: ${classified.message}`);
+          if (collectionName === 'attendance') {
+            setCloudAttendanceReady(false);
+          }
+          if (classified.code === 'unauthenticated') {
+            listenersActiveRef.current = false;
+            setCloudSynced(false);
+          }
         };
 
         try {
@@ -3304,7 +3641,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 saveToStorage('staff_alert_settings', merged);
               }
             },
-            handleSnapErr
+            handleCollectionSnapErr('clinic_config')
           ),
           subscribeCollection<StaffMember>(
             'staff_members',
@@ -3320,7 +3657,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               staffMembersRef.current = normalized;
               setStaffMembers(normalized);
             },
-            handleSnapErr
+            handleCollectionSnapErr('staff_members')
           ),
           subscribeCollection<Doctor>('doctors', ADMIN_OWNER_EMAIL, items => {
             const merged = applyPendingDocOps('doctors', items);
@@ -3328,28 +3665,28 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               doctorsRef.current = merged;
               setDoctors(merged);
             }
-          }, handleSnapErr),
+          }, handleCollectionSnapErr('doctors')),
           subscribeCollection<ClinicUnit>('units', ADMIN_OWNER_EMAIL, items => {
             const merged = applyPendingDocOps('units', items);
             if (merged.length > 0) {
               unitsRef.current = merged;
               setUnits(merged);
             }
-          }, handleSnapErr),
+          }, handleCollectionSnapErr('units')),
           subscribeCollection<ProcedureItem>('procedures', ADMIN_OWNER_EMAIL, items => {
             const merged = applyPendingDocOps('procedures', items);
             if (merged.length > 0) {
               proceduresRef.current = merged;
               setProcedures(merged);
             }
-          }, handleSnapErr),
+          }, handleCollectionSnapErr('procedures')),
           subscribeCollection<Expense>('expenses', ADMIN_OWNER_EMAIL, items => {
             const merged = applyPendingDocOps('expenses', items).sort((a, b) =>
               (b.date || '').localeCompare(a.date || '')
             );
             expensesRef.current = merged;
             setExpenses(merged);
-          }, handleSnapErr),
+          }, handleCollectionSnapErr('expenses')),
           subscribeCollection<Task>('tasks', ADMIN_OWNER_EMAIL, items => {
             setCloudTasksReady(true);
             const merged = applyPendingDocOps('tasks', items).sort((a, b) =>
@@ -3357,16 +3694,14 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             );
             tasksRef.current = merged;
             setTasks(merged);
-          }, handleSnapErr),
+          }, handleCollectionSnapErr('tasks')),
           subscribeCollection<AttendanceRecord>('attendance', ADMIN_OWNER_EMAIL, items => {
             setCloudAttendanceReady(true);
-            const merged = applyPendingDocOps('attendance', items).sort((a, b) =>
-              (b.date || '').localeCompare(a.date || '')
-            );
+            const merged = reconcileAttendanceRecords(applyPendingDocOps('attendance', items));
             attendanceRef.current = merged;
             saveToStorage('attendance', merged);
             setAttendance(merged);
-          }, handleSnapErr),
+          }, handleCollectionSnapErr('attendance')),
           subscribeCollection<AuditLogEntry>('audit_logs', ADMIN_OWNER_EMAIL, items => {
             const sorted = applyPendingDocOps('audit_logs', items)
               .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
@@ -3374,15 +3709,15 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             auditLogsRef.current = sorted;
             setAuditLogs(sorted);
             saveToStorage('audit_logs', sorted);
-          }, handleSnapErr),
+          }, handleCollectionSnapErr('audit_logs')),
           subscribeCollection<PatientFollowUpLogEntry>('patient_follow_up_logs', ADMIN_OWNER_EMAIL, items => {
             const sorted = applyPendingDocOps('patient_follow_up_logs', items)
               .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
-              .slice(0, 500);
+              .slice(0, 2000);
             patientFollowUpLogsRef.current = sorted;
             setPatientFollowUpLogs(sorted);
             saveToStorage('patient_follow_up_logs', sorted);
-          }, handleSnapErr),
+          }, handleCollectionSnapErr('patient_follow_up_logs')),
           subscribeCollection<StaffAlertLogEntry>('staff_alert_logs', ADMIN_OWNER_EMAIL, items => {
             const sorted = applyPendingDocOps('staff_alert_logs', items)
               .sort((a, b) => (b.lastUpdatedAt || b.triggeredAt || '').localeCompare(a.lastUpdatedAt || a.triggeredAt || ''))
@@ -3390,7 +3725,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             staffAlertLogsRef.current = sorted;
             setStaffAlertLogs(sorted);
             saveToStorage('staff_alert_logs', sorted);
-          }, handleSnapErr),
+          }, handleCollectionSnapErr('staff_alert_logs')),
           subscribeCollection<StaffComment>('staff_comments', ADMIN_OWNER_EMAIL, items => {
             const hydrated = applyPendingDocOps('staff_comments', items).map(c => ({
               ...c,
@@ -3400,21 +3735,21 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             staffCommentsRef.current = sorted;
             setStaffComments(sorted);
             saveToStorage('staff_comments', sorted);
-          }, handleSnapErr),
+          }, handleCollectionSnapErr('staff_comments')),
           subscribeCollection<WhatsAppTemplate>('whatsapp_templates', ADMIN_OWNER_EMAIL, items => {
             const merged = applyPendingDocOps('whatsapp_templates', items);
             if (merged.length > 0) {
               whatsappTemplatesRef.current = merged;
               setWhatsappTemplates(merged);
             }
-          }, handleSnapErr),
+          }, handleCollectionSnapErr('whatsapp_templates')),
           subscribeCollection<WhatsAppAlert>('whatsapp_alerts', ADMIN_OWNER_EMAIL, items => {
             const merged = applyPendingDocOps('whatsapp_alerts', items).sort((a, b) =>
               (b.createdAt || '').localeCompare(a.createdAt || '')
             );
             whatsappAlertsRef.current = merged;
             setWhatsappAlerts(merged);
-          }, handleSnapErr),
+          }, handleCollectionSnapErr('whatsapp_alerts')),
           subscribeOverlayCollection<Patient>(
             'patients_sync',
             ADMIN_OWNER_EMAIL,
@@ -3455,23 +3790,23 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                       for (let i = 0; i < invoicesRef.current.length; i++) {
                         const inv = invoicesRef.current[i];
                         if (affectedIds.has(inv.patientId) && inv.status !== 'voided') {
-                          billedByPat.set(inv.patientId, (billedByPat.get(inv.patientId) || 0) + inv.netTotal);
+                          billedByPat.set(inv.patientId, roundMoney((billedByPat.get(inv.patientId) || 0) + roundMoney(inv.netTotal)));
                         }
                       }
                       for (let i = 0; i < paymentsRef.current.length; i++) {
                         const pay = paymentsRef.current[i];
                         if (affectedIds.has(pay.patientId) && pay.status !== 'voided') {
-                          paidByPat.set(pay.patientId, (paidByPat.get(pay.patientId) || 0) + pay.amount);
+                          paidByPat.set(pay.patientId, roundMoney((paidByPat.get(pay.patientId) || 0) + roundMoney(pay.amount)));
                         }
                       }
                     }
-                    const billed = billedByPat.get(pat.id) ?? pat.totalBilled;
-                    const paid = paidByPat!.get(pat.id) ?? pat.totalPaid;
+                    const billed = roundMoney(billedByPat.get(pat.id) ?? pat.totalBilled);
+                    const paid = roundMoney(paidByPat!.get(pat.id) ?? pat.totalPaid);
                     return {
                       ...pat,
                       totalBilled: billed,
                       totalPaid: paid,
-                      outstandingBalance: Math.max(0, billed - paid)
+                      outstandingBalance: Math.max(0, roundMoney(billed - paid))
                     };
                   });
                   skipPersistRef.current.patients = false;
@@ -3523,7 +3858,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 }
               }
             },
-            handleSnapErr
+            handleCollectionSnapErr('patients_sync')
           ),
           subscribeOverlayCollection<Appointment>(
             'appointments_sync',
@@ -3551,7 +3886,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               appointmentsRef.current = nextAppts;
               setAppointments(nextAppts);
             },
-            handleSnapErr
+            handleCollectionSnapErr('appointments_sync')
           ),
           subscribeOverlayCollection<Invoice>(
             'invoices_sync',
@@ -3560,7 +3895,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               overlaysRef.current.invoices = applyPendingOverlayOps('invoices_sync', overlays);
               applyDeduplicatedFinancialOverlays('invoices');
             },
-            handleSnapErr
+            handleCollectionSnapErr('invoices_sync')
           ),
           subscribeOverlayCollection<Payment>(
             'payments_sync',
@@ -3569,7 +3904,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               overlaysRef.current.payments = applyPendingOverlayOps('payments_sync', overlays);
               applyDeduplicatedFinancialOverlays('payments');
             },
-            handleSnapErr
+            handleCollectionSnapErr('payments_sync')
           ),
           subscribeOverlayCollection<Operation>(
             'operations_sync',
@@ -3597,7 +3932,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               operationsRef.current = nextOps;
               setOperations(nextOps);
             },
-            handleSnapErr
+            handleCollectionSnapErr('operations_sync')
           )
         ];
 
@@ -4034,11 +4369,23 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const currentUser = useMemo<StaffMember>(
     () =>
       staffMembers.find(s => s.id === currentUserId && !s.isDisabled) ||
-      staffMembers.find(s => !s.isDisabled) ||
-      staffMembers[0] ||
-      INITIAL_STAFF_MEMBERS[0],
+      createLockedGuestUser(currentUserId),
     [staffMembers, currentUserId]
   );
+
+  // Auto-logout if staff session was disabled or deleted after cloud sync completes
+  useEffect(() => {
+    if (!isLoggedIn || !cloudStaffReady) return;
+    if (!currentUserId || currentUser.isDisabled) {
+      setIsLoggedIn(false);
+      setIsDrawerOpen(false);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_PREFIX + 'is_logged_in', 'false');
+        sessionStorage.removeItem(LOCAL_STORAGE_PREFIX + 'is_logged_in');
+        sessionStorage.removeItem(LOCAL_STORAGE_PREFIX + 'current_user_id');
+      } catch {}
+    }
+  }, [isLoggedIn, cloudStaffReady, currentUserId, currentUser.isDisabled]);
 
   const effectivePatients = useMemo(() => {
     if (currentUser.role === 'doctor' && currentUser.permissions?.patientsOwnOnly) {
@@ -4144,7 +4491,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Record an account-open entry once per browser/PWA session when an employee opens a remembered session
   useEffect(() => {
-    if (!isLoggedIn || !archiveReady) return;
+    if (!isLoggedIn || !archiveReady || currentUser.isDisabled) return;
     const sessionKey = LOCAL_STORAGE_PREFIX + 'session_login_logged_' + currentUser.id;
     try {
       if (sessionStorage.getItem(sessionKey) === '1') return;
@@ -5073,6 +5420,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [invoices, payments, archiveReady]);
 
   const reloadNativeDatabase = async () => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const archive = await ensureArchiveLoaded();
     clearPendingCloudOps();
     dirtyIdbKeysRef.current.clear();
@@ -5385,6 +5736,18 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       registeredDate?: string;
     }
   ): Patient => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'addPatients')) {
+      return {
+        ...patientData,
+        id: 'unauthorized_pat',
+        registeredDate: patientData.registeredDate || getTodayDateString(),
+        totalBilled: 0,
+        totalPaid: 0,
+        outstandingBalance: 0,
+        notes: []
+      };
+    }
     const { registeredDate: requestedDate, followUpStatus: requestedStatus, ...restData } = patientData;
     const newId = 'pat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
     const derivedStatus = requestedStatus?.trim() || 'عميل محتمل';
@@ -5452,6 +5815,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updatePatient = (id: string, updates: Partial<Patient>) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'editPatients')) return;
     const existingPat = patientsRef.current.find(p => p.id === id);
     const cleanUpdates: Partial<Patient> = updates.tags
       ? { ...updates, tags: updates.tags.filter(t => !REMOVED_LEGACY_STATUS_TAGS.has(t)) }
@@ -5473,6 +5838,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const setPatientDefaultWhatsAppPhone = (patientId: string, which: 'primary' | 'secondary') => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'editPatients')) return;
     const existingPat = patientsRef.current.find(p => p.id === patientId);
     if (!existingPat) return;
     if (which === 'secondary' && !existingPat.secondaryPhone?.trim()) return;
@@ -5498,6 +5865,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const setPatientPhoneNoWhatsApp = (patientId: string, phone: string, isNoWhatsApp: boolean) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'editPatients')) return;
     const existingPat = patientsRef.current.find(p => p.id === patientId);
     if (!existingPat) return;
     const targetKey = normalizePhoneKey(phone);
@@ -5552,6 +5921,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     newPhone: string,
     slot: 'primary' | 'secondary' = 'secondary'
   ) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'editPatients')) return;
     const existingPat = patientsRef.current.find(p => p.id === patientId);
     const trimmed = newPhone.trim();
     if (!existingPat || !trimmed) return;
@@ -5586,6 +5957,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deletePatient = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'deletePatients')) return;
     const existingPat = patientsRef.current.find(p => p.id === id);
     const nextPatients = patientsRef.current.filter(p => p.id !== id);
     patientsRef.current = nextPatients;
@@ -5621,9 +5994,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     audioDataUrl?: string,
     audioDurationSeconds?: number
   ) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'addClinicalNotes')) return;
     const normalizedTeeth = normalizeToothSelection(toothSelection);
     const primaryTooth = normalizedTeeth?.[0];
-    const activeStaff = resolveActiveStaffFromRefs();
     const newNote = {
       id: 'note_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5),
       patientId,
@@ -5666,6 +6040,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updatePatientNote = (patientId: string, noteId: string, content: string, toothSelection?: number | number[]) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'editClinicalNotes')) return;
     const normalizedTeeth = normalizeToothSelection(toothSelection);
     const primaryTooth = normalizedTeeth?.[0];
     const existingPat = patientsRef.current.find(p => p.id === patientId);
@@ -5691,6 +6067,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deletePatientNote = (patientId: string, noteId: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'deleteClinicalNotes')) return;
     const existingPat = patientsRef.current.find(p => p.id === patientId);
     const deletedNote = existingPat?.notes?.find(n => n.id === noteId);
     const updatedPat = existingPat
@@ -5714,6 +6092,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const togglePalmerTooth = (patientId: string, toothNumber: number) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'editClinicalNotes') && !hasStaffPermission(activeStaff, 'editPatients')) return;
     const existingPat = patientsRef.current.find(p => p.id === patientId);
     let updatedPat: Patient | undefined;
     if (existingPat) {
@@ -5762,6 +6142,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const addAppointment = (apptData: Omit<Appointment, 'id' | 'createdAt'>) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'addAppointments')) {
+      return { success: false };
+    }
     const conflict = checkAppointmentConflict(apptData.date, apptData.time, apptData.durationMinutes, apptData.unitId);
     const newId = 'apt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
     const newAppt: Appointment = {
@@ -5834,6 +6218,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateAppointmentStatus = (id: string, status: AppointmentStatus) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'editAppointments')) return;
     const existingAppt = appointmentsRef.current.find(a => a.id === id);
     const updatedAppt = existingAppt ? { ...existingAppt, status } : undefined;
     if (updatedAppt) {
@@ -5912,6 +6298,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateAppointment = (id: string, updates: Partial<Appointment>) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'editAppointments')) return;
     const existingAppt = appointmentsRef.current.find(a => a.id === id);
     const updatedAppt = existingAppt ? { ...existingAppt, ...updates } : undefined;
     if (updatedAppt) {
@@ -5955,6 +6343,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteAppointment = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'deleteAppointments')) return;
     const existingAppt = appointmentsRef.current.find(a => a.id === id);
     const nextAppts = appointmentsRef.current.filter(a => a.id !== id);
     appointmentsRef.current = nextAppts;
@@ -5974,13 +6364,29 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Invoices & Payments
   const addInvoice = (invoiceData: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt'>): Invoice => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'addInvoicesPayments')) {
+      return {
+        ...invoiceData,
+        id: 'unauthorized_inv',
+        invoiceNumber: 'UNAUTHORIZED',
+        createdAt: new Date().toISOString()
+      };
+    }
+
+    const subtotal = roundMoney(invoiceData.subtotal);
+    const discountAmount = roundMoney(invoiceData.discountAmount);
+    const netTotal = Math.max(0, roundMoney(invoiceData.netTotal));
+    const paidAmount = Math.max(0, roundMoney(invoiceData.paidAmount));
+    const outstandingBalance = Math.max(0, roundMoney(netTotal - paidAmount));
+
     // Prevent accidental exact duplicate invoice (same patient, date & netTotal)
     const duplicate = invoicesRef.current.find(
       inv =>
         inv.status !== 'voided' &&
         inv.patientId === invoiceData.patientId &&
         inv.date === invoiceData.date &&
-        Math.round((inv.netTotal || 0) * 100) === Math.round((invoiceData.netTotal || 0) * 100)
+        Math.round((inv.netTotal || 0) * 100) === Math.round(netTotal * 100)
     );
     if (duplicate) {
       return duplicate;
@@ -5991,6 +6397,11 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const newId = 'inv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
     const newInv: Invoice = {
       ...invoiceData,
+      subtotal,
+      discountAmount,
+      netTotal,
+      paidAmount,
+      outstandingBalance,
       id: newId,
       invoiceNumber: invNum,
       createdAt: new Date().toISOString()
@@ -6030,8 +6441,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             tpl.triggerEvent === 'invoice_procedure' && tpl.procedureName
               ? tpl.procedureName
               : invoiceData.items.map(it => it.procedureName).filter(Boolean).join('، '),
-          amount: invoiceData.netTotal,
-          balance: invoiceData.outstandingBalance,
+          amount: newInv.netTotal,
+          balance: newInv.outstandingBalance,
           invoiceNumber: invNum
         },
         unitsRef.current
@@ -6063,24 +6474,31 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateInvoice = (id: string, updates: Partial<Invoice>) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'editInvoicesPayments')) return;
     const existingInv = invoicesRef.current.find(i => i.id === id);
     let updatedInv: Invoice | undefined;
     if (existingInv) {
       const merged = { ...existingInv, ...updates };
-      const paid = merged.paidAmount || 0;
-      const outstanding = Math.max(0, merged.netTotal - paid);
+      const netTotal = Math.max(0, roundMoney(merged.netTotal));
+      const paid = Math.max(0, roundMoney(merged.paidAmount));
+      const outstanding = Math.max(0, roundMoney(netTotal - paid));
       const nextStatus: Invoice['status'] =
         merged.status === 'voided'
           ? 'voided'
-          : outstanding <= 0 && merged.netTotal > 0
+          : outstanding <= 0 && netTotal > 0
           ? 'paid'
           : paid > 0 && outstanding > 0
           ? 'partial'
-          : merged.netTotal === 0
+          : netTotal === 0
           ? 'paid'
           : 'unpaid';
       updatedInv = {
         ...merged,
+        subtotal: roundMoney(merged.subtotal),
+        discountAmount: roundMoney(merged.discountAmount),
+        netTotal,
+        paidAmount: paid,
         outstandingBalance: outstanding,
         status: updates.status ?? nextStatus
       };
@@ -6099,6 +6517,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const voidInvoice = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'deleteInvoicesPayments')) return;
     const existingInv = invoicesRef.current.find(i => i.id === id);
     const updatedInv = existingInv ? { ...existingInv, status: 'voided' as const, outstandingBalance: 0 } : undefined;
     if (existingInv) {
@@ -6137,6 +6557,17 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const addPayment = (paymentData: Omit<Payment, 'id' | 'receiptNumber' | 'createdAt'>): Payment => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'addInvoicesPayments')) {
+      return {
+        ...paymentData,
+        id: 'unauthorized_pay',
+        receiptNumber: 'UNAUTHORIZED',
+        createdAt: new Date().toISOString()
+      };
+    }
+
+    const amount = Math.max(0, roundMoney(paymentData.amount));
     // Prevent accidental exact duplicate active payment (same patient, invoice/unlinked, date & amount)
     const duplicatePay = paymentsRef.current.find(
       p =>
@@ -6144,7 +6575,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         p.patientId === paymentData.patientId &&
         p.date === paymentData.date &&
         (p.invoiceId || '') === (paymentData.invoiceId || '') &&
-        Math.round((p.amount || 0) * 100) === Math.round((paymentData.amount || 0) * 100)
+        Math.round((p.amount || 0) * 100) === Math.round(amount * 100)
     );
     if (duplicatePay) {
       return duplicatePay;
@@ -6155,6 +6586,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const newId = 'pay_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
     const newPayment: Payment = {
       ...paymentData,
+      amount,
       id: newId,
       receiptNumber: recNum,
       createdAt: new Date().toISOString()
@@ -6170,8 +6602,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (paymentData.invoiceId) {
       const targetInv = invoicesRef.current.find(i => i.id === paymentData.invoiceId);
       if (targetInv) {
-        const newPaid = targetInv.paidAmount + paymentData.amount;
-        const newBalance = Math.max(0, targetInv.netTotal - newPaid);
+        const newPaid = roundMoney(roundMoney(targetInv.paidAmount) + amount);
+        const newBalance = Math.max(0, roundMoney(roundMoney(targetInv.netTotal) - newPaid));
         const status = newBalance <= 0 ? 'paid' : 'partial';
         updatedInvoiceForCloud = {
           ...targetInv,
@@ -6191,7 +6623,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // Trigger payment receipt WhatsApp message(s) using active templates
     const patient = patientsRef.current.find(p => p.id === paymentData.patientId);
     if (patient) {
-      const remaining = Math.max(0, patient.outstandingBalance - paymentData.amount);
+      const remaining = Math.max(0, roundMoney(roundMoney(patient.outstandingBalance) - amount));
       const matchingPayTpls = whatsappTemplatesRef.current.filter(
         t => t.isActive && t.triggerEvent === 'payment_received'
       );
@@ -6208,7 +6640,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               patientName: patient.name,
               unitName: patient.branchName,
               date: paymentData.date,
-              amount: paymentData.amount,
+              amount,
               balance: remaining,
               invoiceNumber: paymentData.invoiceNumber || recNum
             },
@@ -6247,10 +6679,16 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updatePayment = (id: string, updates: Partial<Payment>) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'editInvoicesPayments')) return;
     const existingPay = paymentsRef.current.find(p => p.id === id);
     if (!existingPay) return;
 
-    const updatedPay: Payment = { ...existingPay, ...updates };
+    const updatedPay: Payment = {
+      ...existingPay,
+      ...updates,
+      amount: updates.amount !== undefined ? Math.max(0, roundMoney(updates.amount)) : roundMoney(existingPay.amount)
+    };
     dirtyFinancialPatientIdsRef.current.add(existingPay.patientId);
     dirtyFinancialPatientIdsRef.current.add(updatedPay.patientId);
     const nextPayments = paymentsRef.current.map(p => (p.id === id ? updatedPay : p));
@@ -6265,16 +6703,19 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (touchedInvoiceIds.size > 0) {
       const nextInvoices = invoicesRef.current.map(inv => {
         if (!touchedInvoiceIds.has(inv.id) || inv.status === 'voided') return inv;
-        const paidSum = nextPayments
-          .filter(p => p.invoiceId === inv.id && p.status !== 'voided')
-          .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-        const newBalance = Math.max(0, inv.netTotal - paidSum);
+        const paidSum = roundMoney(
+          nextPayments
+            .filter(p => p.invoiceId === inv.id && p.status !== 'voided')
+            .reduce((sum, p) => sum + roundMoney(p.amount), 0)
+        );
+        const netTotal = Math.max(0, roundMoney(inv.netTotal));
+        const newBalance = Math.max(0, roundMoney(netTotal - paidSum));
         const nextStatus: Invoice['status'] =
-          newBalance <= 0 && inv.netTotal > 0
+          newBalance <= 0 && netTotal > 0
             ? 'paid'
             : paidSum > 0 && newBalance > 0
             ? 'partial'
-            : inv.netTotal === 0
+            : netTotal === 0
             ? 'paid'
             : 'unpaid';
         const nextInv: Invoice = {
@@ -6304,6 +6745,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const voidPayment = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'deleteInvoicesPayments')) return;
     const pay = paymentsRef.current.find(p => p.id === id);
     if (!pay) return;
 
@@ -6318,9 +6761,16 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (pay.invoiceId) {
       const targetInv = invoicesRef.current.find(i => i.id === pay.invoiceId);
       if (targetInv) {
-        const newPaid = Math.max(0, targetInv.paidAmount - pay.amount);
-        const newBalance = targetInv.netTotal - newPaid;
-        const status = newPaid === 0 ? 'unpaid' : newBalance <= 0 ? 'paid' : 'partial';
+        const newPaid = Math.max(0, roundMoney(roundMoney(targetInv.paidAmount) - roundMoney(pay.amount)));
+        const newBalance = Math.max(0, roundMoney(roundMoney(targetInv.netTotal) - newPaid));
+        const status =
+          targetInv.status === 'voided'
+            ? 'voided'
+            : newPaid === 0
+            ? (targetInv.netTotal === 0 ? 'paid' : 'unpaid')
+            : newBalance <= 0
+            ? 'paid'
+            : 'partial';
         updatedInvoiceForCloud = {
           ...targetInv,
           paidAmount: newPaid,
@@ -6346,20 +6796,22 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const payAllInvoices = (patientId: string, amount: number, method: Payment['paymentMethod'], notes?: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'addInvoicesPayments')) return;
     const patient = patientsRef.current.find(p => p.id === patientId);
     if (!patient) return;
-    const activeStaff = resolveActiveStaffFromRefs();
 
     // Distribute payment across unpaid invoices
     const unpaidInvs = invoicesRef.current
       .filter(i => i.patientId === patientId && i.outstandingBalance > 0 && i.status !== 'voided')
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    let remainingToPay = amount;
+    let remainingToPay = roundMoney(amount);
 
     for (const inv of unpaidInvs) {
       if (remainingToPay <= 0) break;
-      const allocated = Math.min(inv.outstandingBalance, remainingToPay);
+      const allocated = roundMoney(Math.min(roundMoney(inv.outstandingBalance), remainingToPay));
+      if (allocated <= 0) continue;
       addPayment({
         invoiceId: inv.id,
         invoiceNumber: inv.invoiceNumber,
@@ -6372,14 +6824,17 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         notes: notes ? `${notes} (سداد مجمع)` : 'سداد مجمع لجميع الفواتير',
         status: 'valid'
       });
-      remainingToPay -= allocated;
+      remainingToPay = Math.max(0, roundMoney(remainingToPay - allocated));
     }
   };
 
   // Expenses
   const addExpense = (expenseData: Omit<Expense, 'id'>) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'addExpenses')) return;
     const newExpense: Expense = {
       ...expenseData,
+      amount: roundMoney(expenseData.amount),
       id: 'exp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5)
     };
     const nextExpenses = [newExpense, ...expensesRef.current];
@@ -6398,9 +6853,12 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateExpense = (id: string, updates: Partial<Expense>) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'editExpenses')) return;
     const existing = expensesRef.current.find(e => e.id === id);
-    const updated = existing ? { ...existing, ...updates } : undefined;
-    const nextExpenses = expensesRef.current.map(e => (e.id === id ? { ...e, ...updates } : e));
+    const cleanUpdates = updates.amount !== undefined ? { ...updates, amount: roundMoney(updates.amount) } : updates;
+    const updated = existing ? { ...existing, ...cleanUpdates } : undefined;
+    const nextExpenses = expensesRef.current.map(e => (e.id === id ? { ...e, ...cleanUpdates } : e));
     expensesRef.current = nextExpenses;
     saveToStorage('expenses', nextExpenses);
     setExpenses(nextExpenses);
@@ -6420,6 +6878,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteExpense = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'deleteExpenses')) return;
     const existing = expensesRef.current.find(e => e.id === id);
     const nextExpenses = expensesRef.current.filter(e => e.id !== id);
     expensesRef.current = nextExpenses;
@@ -6433,6 +6893,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Tasks
   const addTask = (taskData: Omit<Task, 'id' | 'isCompleted'>) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'addTasks')) return;
     const newTask: Task = {
       ...taskData,
       id: 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5),
@@ -6454,6 +6916,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateTask = (id: string, updates: Partial<Task>) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'editTasks')) return;
     const existing = tasksRef.current.find(t => t.id === id);
     const updated = existing ? { ...existing, ...updates } : undefined;
     const nextTasks = tasksRef.current.map(t => (t.id === id ? { ...t, ...updates } : t));
@@ -6636,6 +7100,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteTask = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (!hasStaffPermission(activeStaff, 'deleteTasks')) return;
     const existing = tasksRef.current.find(t => t.id === id);
     const nextTasks = tasksRef.current.filter(t => t.id !== id);
     tasksRef.current = nextTasks;
@@ -6654,20 +7120,39 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     manualReason?: string,
     manualOverrides?: { userId?: string; userName?: string; date?: string; clockIn?: string },
     alertSource?: string
-  ): { success: boolean; error?: string } => {
-    const unit = unitsRef.current.find(u => u.id === unitId);
-    const cairo = getCairoNowParts();
+  ): {
+    success: boolean;
+    error?: string;
+    record?: AttendanceRecord;
+    syncPromise?: Promise<{ syncedToCloud: boolean; queuedOffline: boolean; permanentError?: string }>;
+  } => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled) {
+      return { success: false, error: 'الحساب معطل أو غير مصرح له بتسجيل الحضور' };
+    }
     const targetStaff = manualOverrides?.userId
       ? staffMembersRef.current.find(s => s.id === manualOverrides.userId)
       : undefined;
-    const targetUserId = (targetStaff?.id || manualOverrides?.userId || currentUserIdRef.current || currentUser.id).slice(0, 128);
+    const targetUserId = (targetStaff?.id || manualOverrides?.userId || activeStaff.id).slice(0, 128);
+    if (
+      (isManual || targetUserId !== activeStaff.id) &&
+      activeStaff.role !== 'admin' &&
+      !hasStaffPermission(activeStaff, 'manualAttendance')
+    ) {
+      return { success: false, error: 'ليس لديك صلاحية لتسجيل حضور يدوي أو نيابة عن موظف آخر' };
+    }
+
+    if (clockInInFlightRef.current.has(targetUserId)) {
+      return { success: false, error: 'جاري تسجيل بدء الشفت بالفعل، يرجى الانتظار لحظة...' };
+    }
+
+    const unit = unitsRef.current.find(u => u.id === unitId);
+    const cairo = getCairoNowParts();
     const resolvedStaff =
-      staffMembersRef.current.find(s => s.id === targetUserId) || currentUser;
+      staffMembersRef.current.find(s => s.id === targetUserId) || activeStaff;
     const targetUserName = (targetStaff?.name || manualOverrides?.userName || resolvedStaff.name || 'موظف').slice(0, 120);
 
-    const alreadyActive = attendanceRef.current.find(
-      a => a.userId === targetUserId && a.status === 'active'
-    );
+    const alreadyActive = findActiveShiftForUser(attendanceRef.current, targetUserId);
     if (alreadyActive) {
       return {
         success: false,
@@ -6679,8 +7164,9 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const resolvedTime = (manualOverrides?.clockIn?.trim() || cairo.timeStr).slice(0, 16);
     const cleanReason = manualReason?.trim() ? manualReason.trim().slice(0, 300) : undefined;
 
+    clockInInFlightRef.current.add(targetUserId);
     const newRec: AttendanceRecord = {
-      id: 'att_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5),
+      id: createDeterministicAttendanceId(targetUserId, resolvedDate, attendanceRef.current),
       userId: targetUserId,
       userName: targetUserName,
       unitId: (unitId || 'unit_1').slice(0, 128),
@@ -6691,19 +7177,13 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ...(cleanReason ? { manualReason: cleanReason } : {}),
       status: 'active'
     };
-    const nextAttendance = [newRec, ...attendanceRef.current];
+    const nextAttendance = sortAttendanceRecordsDesc([newRec, ...attendanceRef.current]);
     attendanceRef.current = nextAttendance;
     saveToStorage('attendance', nextAttendance);
     setAttendance(nextAttendance);
-    void dispatchCloudOps([
-      {
-        kind: 'doc_upsert',
-        collectionName: 'attendance',
-        docId: newRec.id,
-        data: newRec as unknown as Record<string, unknown>
-      }
-    ]).then(() => {
-      void flushPendingCloudOps();
+    clearAttendanceSyncError(newRec.id);
+    const syncPromise = syncAttendanceRecordNow(newRec).finally(() => {
+      clockInInFlightRef.current.delete(targetUserId);
     });
     logAuditAction('add', 'attendance', newRec.id, newRec.userName, `بدء شفت للموظف ${newRec.userName} في ${newRec.unitName} (${newRec.date} ${formatCairoTime(newRec.clockIn)})`, undefined, newRec, 'attendance');
     const shiftStartKey = `shift_start_${targetUserId}_${resolvedDate}`;
@@ -6726,65 +7206,75 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       });
     }
-    return { success: true };
+    return { success: true, record: newRec, syncPromise };
   };
 
-  const clockOut = (recordId: string, alertSource?: string, specificTime24?: string) => {
-    const timeStr = specificTime24 || getCairoNowParts().timeStr;
+  const clockOut = (
+    recordId: string,
+    alertSource?: string,
+    specificTime24?: string
+  ): {
+    success: boolean;
+    error?: string;
+    syncPromise?: Promise<{ syncedToCloud: boolean; queuedOffline: boolean; permanentError?: string }>;
+  } => {
+    const activeStaff = resolveActiveStaffFromRefs();
     const existing = attendanceRef.current.find(r => r.id === recordId);
-    const updated = existing ? { ...existing, clockOut: timeStr, status: 'completed' as const } : undefined;
-    const nextAttendance = attendanceRef.current.map(r =>
-      r.id === recordId ? { ...r, clockOut: timeStr, status: 'completed' as const } : r
+    if (!existing) {
+      return { success: false, error: 'لم يتم العثور على سجل الشفت' };
+    }
+    if (
+      activeStaff.isDisabled ||
+      (existing.userId !== activeStaff.id &&
+        activeStaff.role !== 'admin' &&
+        !hasStaffPermission(activeStaff, 'manualAttendance'))
+    ) {
+      return { success: false, error: 'ليس لديك صلاحية لإنهاء هذا الشفت' };
+    }
+
+    const timeStr = specificTime24 || getCairoNowParts().timeStr;
+    const updated: AttendanceRecord = { ...existing, clockOut: timeStr, status: 'completed' };
+    const nextAttendance = sortAttendanceRecordsDesc(
+      attendanceRef.current.map(r => (r.id === recordId ? updated : r))
     );
     attendanceRef.current = nextAttendance;
     saveToStorage('attendance', nextAttendance);
     setAttendance(nextAttendance);
-    if (existing) {
-      setCompletedShiftDates(prev => {
-        const next = { ...prev, [existing.userId]: existing.date };
-        saveToStorage('completed_shift_dates', next);
-        return next;
-      });
-      if (existing.userId === currentUserIdRef.current) {
-        setShiftEndSnoozeUntil(null);
-        try { sessionStorage.removeItem(LOCAL_STORAGE_PREFIX + 'shift_end_snooze'); } catch {}
-      }
+    setCompletedShiftDates(prev => {
+      const next = { ...prev, [existing.userId]: existing.date };
+      saveToStorage('completed_shift_dates', next);
+      return next;
+    });
+    if (existing.userId === currentUserIdRef.current) {
+      setShiftEndSnoozeUntil(null);
+      try { sessionStorage.removeItem(LOCAL_STORAGE_PREFIX + 'shift_end_snooze'); } catch {}
     }
-    if (updated) {
-      void dispatchCloudOps([
-        {
-          kind: 'doc_upsert',
-          collectionName: 'attendance',
-          docId: updated.id,
-          data: updated as unknown as Record<string, unknown>
+
+    clearAttendanceSyncError(updated.id);
+    const syncPromise = syncAttendanceRecordNow(updated);
+
+    logAuditAction('status_change', 'attendance', recordId, existing.userName, `إنهاء شفت للموظف ${existing.userName} الساعة ${timeStr}`, existing, updated, 'attendance');
+    const shiftEndKey = `shift_end_${existing.userId}_${existing.date}`;
+    if (
+      staffAlertLogsRef.current.some(l => l.targetKey === shiftEndKey || l.id === toSafeAlertLogId(shiftEndKey)) ||
+      alertSource
+    ) {
+      recordStaffAlertInteraction({
+        targetKey: shiftEndKey,
+        action: 'clocked_out',
+        actionLabel: `تم تسجيل الانصراف الساعة ${formatCairoTime(timeStr)} (${existing.unitName})`,
+        newStatus: 'resolved',
+        source: alertSource || 'صفحة الحضور والشفت',
+        fallbackMeta: {
+          alertType: 'shift_end',
+          title: `تذكير إنهاء الشفت — ${existing.userName}`,
+          message: `تم تسجيل إنهاء الشفت الساعة ${formatCairoTime(timeStr)} (${existing.unitName})`,
+          appointmentDate: existing.date,
+          appointmentTime: timeStr
         }
-      ]).then(() => {
-        void flushPendingCloudOps();
       });
     }
-    if (existing && updated) {
-      logAuditAction('status_change', 'attendance', recordId, existing.userName, `إنهاء شفت للموظف ${existing.userName} الساعة ${timeStr}`, existing, updated, 'attendance');
-      const shiftEndKey = `shift_end_${existing.userId}_${existing.date}`;
-      if (
-        staffAlertLogsRef.current.some(l => l.targetKey === shiftEndKey || l.id === toSafeAlertLogId(shiftEndKey)) ||
-        alertSource
-      ) {
-        recordStaffAlertInteraction({
-          targetKey: shiftEndKey,
-          action: 'clocked_out',
-          actionLabel: `تم تسجيل الانصراف الساعة ${formatCairoTime(timeStr)} (${existing.unitName})`,
-          newStatus: 'resolved',
-          source: alertSource || 'صفحة الحضور والشفت',
-          fallbackMeta: {
-            alertType: 'shift_end',
-            title: `تذكير إنهاء الشفت — ${existing.userName}`,
-            message: `تم تسجيل إنهاء الشفت الساعة ${formatCairoTime(timeStr)} (${existing.unitName})`,
-            appointmentDate: existing.date,
-            appointmentTime: timeStr
-          }
-        });
-      }
-    }
+    return { success: true, syncPromise };
   };
 
   const [shiftStartSnoozeUntil, setShiftStartSnoozeUntil] = useState<number | null>(() => {
@@ -6936,13 +7426,23 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return { success: false, error: msg };
       }
 
+      const syncResult = res.syncPromise ? await res.syncPromise : { syncedToCloud: true, queuedOffline: false };
       setStaffAlertSnoozeUntil(null);
       setShiftStartSnoozeUntil(null);
       try { sessionStorage.removeItem(LOCAL_STORAGE_PREFIX + 'shift_start_snooze'); } catch {}
+
+      if (syncResult.permanentError) {
+        const msg = `تم تسجيل بدء الشفت محلياً ولكن فشلت المزامنة للإدارة: ${syncResult.permanentError}`;
+        setShiftAlertFeedback({ type: 'error', action: 'shift_start', text: msg });
+        return { success: false, error: msg, unitName: defaultUnit.name };
+      }
+
       setShiftAlertFeedback({
         type: 'success',
         action: 'shift_start',
-        text: `تم بدء الشفت بنجاح في ${defaultUnit.name}`
+        text: syncResult.queuedOffline
+          ? `تم حفظ بدء الشفت محلياً فقط في ${defaultUnit.name} (بدون إنترنت) — سيتم المزامنة للإدارة تلقائياً`
+          : `تم بدء الشفت في ${defaultUnit.name} ومزامنته للإدارة بنجاح`
       });
       shiftFeedbackTimerRef.current = window.setTimeout(() => {
         setShiftAlertFeedback(prev => (prev?.type === 'success' ? null : prev));
@@ -6951,9 +7451,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // shift_end
-    const activeShift = attendanceRef.current.find(
-      a => a.userId === activeUser.id && a.status === 'active'
-    );
+    const activeShift = findActiveShiftForUser(attendanceRef.current, activeUser.id);
     if (!activeShift) {
       const msg = 'لا يوجد شفت مفتوح حالياً لإنهائه.';
       setShiftAlertFeedback({ type: 'error', action: 'shift_end', text: msg });
@@ -6999,14 +7497,29 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return { success: false, error: msg };
     }
 
-    clockOut(activeShift.id, source);
+    const outRes = clockOut(activeShift.id, source);
+    if (!outRes.success) {
+      const msg = outRes.error || 'تعذر إنهاء الشفت';
+      setShiftAlertFeedback({ type: 'error', action: 'shift_end', text: msg });
+      return { success: false, error: msg };
+    }
+    const syncResult = outRes.syncPromise ? await outRes.syncPromise : { syncedToCloud: true, queuedOffline: false };
     setStaffAlertSnoozeUntil(null);
     setShiftEndSnoozeUntil(null);
     try { sessionStorage.removeItem(LOCAL_STORAGE_PREFIX + 'shift_end_snooze'); } catch {}
+
+    if (syncResult.permanentError) {
+      const msg = `تم تسجيل الانصراف محلياً ولكن فشلت المزامنة للإدارة: ${syncResult.permanentError}`;
+      setShiftAlertFeedback({ type: 'error', action: 'shift_end', text: msg });
+      return { success: false, error: msg, unitName: activeShift.unitName };
+    }
+
     setShiftAlertFeedback({
       type: 'success',
       action: 'shift_end',
-      text: `تم إنهاء الشفت بنجاح (${activeShift.unitName})`
+      text: syncResult.queuedOffline
+        ? `تم حفظ إنهاء الشفت محلياً فقط (${activeShift.unitName}) بدون إنترنت — سيتم المزامنة للإدارة تلقائياً`
+        : `تم إنهاء الشفت (${activeShift.unitName}) ومزامنته للإدارة بنجاح`
     });
     shiftFeedbackTimerRef.current = window.setTimeout(() => {
       setShiftAlertFeedback(prev => (prev?.type === 'success' ? null : prev));
@@ -7015,6 +7528,15 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const toggleStaffAttendanceExempt = (staffId: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (
+      activeStaff.isDisabled ||
+      (activeStaff.role !== 'admin' &&
+        !hasStaffPermission(activeStaff, 'manageSettings') &&
+        !hasStaffPermission(activeStaff, 'manualAttendance'))
+    ) {
+      return;
+    }
     const member = staffMembersRef.current.find(s => s.id === staffId);
     if (!member) return;
     const nextVal = !member.exemptFromAttendance;
@@ -7032,6 +7554,15 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const grantStaffAttendanceLeave = (staffId: string, dateStr: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (
+      activeStaff.isDisabled ||
+      (activeStaff.role !== 'admin' &&
+        !hasStaffPermission(activeStaff, 'manageSettings') &&
+        !hasStaffPermission(activeStaff, 'manualAttendance'))
+    ) {
+      return;
+    }
     const member = staffMembersRef.current.find(s => s.id === staffId);
     if (!member || !dateStr) return;
     const existingDates = Array.isArray(member.attendanceExemptDates) ? member.attendanceExemptDates : [];
@@ -7051,6 +7582,15 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const removeStaffAttendanceLeave = (staffId: string, dateStr: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (
+      activeStaff.isDisabled ||
+      (activeStaff.role !== 'admin' &&
+        !hasStaffPermission(activeStaff, 'manageSettings') &&
+        !hasStaffPermission(activeStaff, 'manualAttendance'))
+    ) {
+      return;
+    }
     const member = staffMembersRef.current.find(s => s.id === staffId);
     if (!member || !dateStr) return;
     const existingDates = Array.isArray(member.attendanceExemptDates) ? member.attendanceExemptDates : [];
@@ -7069,6 +7609,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const editAttendanceRecord = (id: string, updates: Partial<AttendanceRecord>) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manualAttendance'))) {
+      return;
+    }
     const existing = attendanceRef.current.find(r => r.id === id);
     if (!existing) return;
     const resolvedUnit = updates.unitId ? unitsRef.current.find(u => u.id === updates.unitId) : undefined;
@@ -7094,20 +7638,14 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       isManual: true,
       manualReason: nextReason.slice(0, 300)
     };
-    const nextAttendance = attendanceRef.current.map(r => (r.id === id ? updated : r));
+    const nextAttendance = sortAttendanceRecordsDesc(
+      attendanceRef.current.map(r => (r.id === id ? updated : r))
+    );
     attendanceRef.current = nextAttendance;
     saveToStorage('attendance', nextAttendance);
     setAttendance(nextAttendance);
-    void dispatchCloudOps([
-      {
-        kind: 'doc_upsert',
-        collectionName: 'attendance',
-        docId: updated.id,
-        data: updated as unknown as Record<string, unknown>
-      }
-    ]).then(() => {
-      void flushPendingCloudOps();
-    });
+    clearAttendanceSyncError(updated.id);
+    void syncAttendanceRecordNow(updated);
 
     const autoEndKey = `shift_auto_end_${id}`;
     const hasAutoEndAlert = staffAlertLogsRef.current.some(
@@ -7144,86 +7682,101 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (cloudUserRef.current && (!cloudAttendanceReady || !cloudStaffReady)) return;
 
     const runMidnightAutoEndCheck = () => {
+      const activeStaff = resolveActiveStaffFromRefs();
+      if (activeStaff.isDisabled) return;
+
       const cairo = getCairoNowParts();
       const existingStaffIds = new Set(staffMembersRef.current.map(s => s.id));
       const activeStaffIds = new Set(
         staffMembersRef.current.filter(s => !s.isDisabled).map(s => s.id)
       );
 
-      // 1. Purge any queued/pending staff_alert_logs writes for deleted or missing staff auto-end records
-      const attendanceById = new Map<string, AttendanceRecord>();
-      attendanceRef.current.forEach(a => attendanceById.set(a.id, a));
+      if (activeStaff.role === 'admin') {
+        // 1. Purge any queued/pending staff_alert_logs writes for deleted or missing staff auto-end records
+        const attendanceById = new Map<string, AttendanceRecord>();
+        attendanceRef.current.forEach(a => attendanceById.set(a.id, a));
 
-      removePendingCloudOpsByPredicate(op => {
-        if (op.collectionName !== 'staff_alert_logs' || op.kind !== 'doc_upsert') return false;
-        if (!op.docId.startsWith('sal_shift_auto_end_')) return false;
-        const recId = op.docId.slice('sal_shift_auto_end_'.length);
-        const rec = attendanceById.get(recId);
-        return !rec || !activeStaffIds.has(rec.userId);
-      });
-
-      // 2. Clean up existing stale active shift_auto_end_* alert logs that belong to deleted/disabled/missing staff
-      const staleAlertLogIds: string[] = [];
-      staffAlertLogsRef.current.forEach(log => {
-        if (log.status !== 'active') return;
-        if (!log.targetKey || !log.targetKey.startsWith('shift_auto_end_')) return;
-        const recId = log.targetKey.slice('shift_auto_end_'.length);
-        const rec = attendanceById.get(recId);
-        if (!rec || !isMidnightAutoEndedAttendance(rec) || !activeStaffIds.has(rec.userId)) {
-          staleAlertLogIds.push(log.id);
-        }
-      });
-
-      const cleanupOps: PendingCloudOpInput[] = [];
-      if (staleAlertLogIds.length > 0) {
-        const staleSet = new Set(staleAlertLogIds);
-        const nextLogs = staffAlertLogsRef.current.filter(l => !staleSet.has(l.id));
-        staffAlertLogsRef.current = nextLogs;
-        saveToStorage('staff_alert_logs', nextLogs);
-        setStaffAlertLogs(nextLogs);
-        staleAlertLogIds.forEach(logId => {
-          cleanupOps.push({
-            kind: 'doc_delete',
-            collectionName: 'staff_alert_logs',
-            docId: logId
-          });
+        removePendingCloudOpsByPredicate(op => {
+          if (op.collectionName !== 'staff_alert_logs' || op.kind !== 'doc_upsert') return false;
+          if (!op.docId.startsWith('sal_shift_auto_end_')) return false;
+          const recId = op.docId.slice('sal_shift_auto_end_'.length);
+          const rec = attendanceById.get(recId);
+          return !rec || !activeStaffIds.has(rec.userId);
         });
-      }
 
-      // 3. Silently normalize any already midnight-auto-ended records belonging to deleted staff so banners clear
-      const deletedAutoEndedMap = new Map<string, AttendanceRecord>();
-      attendanceRef.current.forEach(rec => {
-        if (!existingStaffIds.has(rec.userId) && isMidnightAutoEndedAttendance(rec)) {
-          const cleaned: AttendanceRecord = {
-            ...rec,
-            status: 'completed',
-            clockOut: rec.clockOut || '00:00',
-            isManual: true,
-            manualReason: 'إغلاق تلقائي لسجل شفت قديم لموظف محذوف'
-          };
-          deletedAutoEndedMap.set(rec.id, cleaned);
-          cleanupOps.push({
-            kind: 'doc_upsert',
-            collectionName: 'attendance',
-            docId: cleaned.id,
-            data: cleaned as unknown as Record<string, unknown>
+        // 2. Clean up existing stale active shift_auto_end_* alert logs that belong to deleted/disabled/missing staff
+        const staleAlertLogIds: string[] = [];
+        staffAlertLogsRef.current.forEach(log => {
+          if (log.status !== 'active') return;
+          if (!log.targetKey || !log.targetKey.startsWith('shift_auto_end_')) return;
+          const recId = log.targetKey.slice('shift_auto_end_'.length);
+          const rec = attendanceById.get(recId);
+          if (!rec || !isMidnightAutoEndedAttendance(rec) || !activeStaffIds.has(rec.userId)) {
+            staleAlertLogIds.push(log.id);
+          }
+        });
+
+        const cleanupOps: PendingCloudOpInput[] = [];
+        if (staleAlertLogIds.length > 0) {
+          const staleSet = new Set(staleAlertLogIds);
+          const nextLogs = staffAlertLogsRef.current.filter(l => !staleSet.has(l.id));
+          staffAlertLogsRef.current = nextLogs;
+          saveToStorage('staff_alert_logs', nextLogs);
+          setStaffAlertLogs(nextLogs);
+          staleAlertLogIds.forEach(logId => {
+            cleanupOps.push({
+              kind: 'doc_delete',
+              collectionName: 'staff_alert_logs',
+              docId: logId
+            });
           });
         }
-      });
 
-      if (deletedAutoEndedMap.size > 0) {
-        const cleanedAttendance = attendanceRef.current.map(r => deletedAutoEndedMap.get(r.id) || r);
-        attendanceRef.current = cleanedAttendance;
-        saveToStorage('attendance', cleanedAttendance);
-        setAttendance(cleanedAttendance);
+        // 3. Silently normalize any already midnight-auto-ended records belonging to deleted staff so banners clear
+        const deletedAutoEndedMap = new Map<string, AttendanceRecord>();
+        attendanceRef.current.forEach(rec => {
+          if (!existingStaffIds.has(rec.userId) && isMidnightAutoEndedAttendance(rec)) {
+            const cleaned: AttendanceRecord = {
+              ...rec,
+              status: 'completed',
+              clockOut: rec.clockOut || '00:00',
+              isManual: true,
+              manualReason: 'إغلاق تلقائي لسجل شفت قديم لموظف محذوف'
+            };
+            deletedAutoEndedMap.set(rec.id, cleaned);
+            cleanupOps.push({
+              kind: 'doc_upsert',
+              collectionName: 'attendance',
+              docId: cleaned.id,
+              data: cleaned as unknown as Record<string, unknown>
+            });
+          }
+        });
+
+        if (deletedAutoEndedMap.size > 0) {
+          const cleanedAttendance = attendanceRef.current.map(r => deletedAutoEndedMap.get(r.id) || r);
+          attendanceRef.current = cleanedAttendance;
+          saveToStorage('attendance', cleanedAttendance);
+          setAttendance(cleanedAttendance);
+        }
+
+        if (cleanupOps.length > 0) {
+          void dispatchCloudOps(cleanupOps);
+        }
       }
 
-      if (cleanupOps.length > 0) {
-        void dispatchCloudOps(cleanupOps);
-      }
-
-      // 4. Find prior-day open active shifts
-      const candidates = findMidnightAutoEndCandidates(attendanceRef.current, cairo.dateStr);
+      // 4. Find prior-day open active shifts eligible for auto-end (respects post-midnight grace & RBAC)
+      const rawCandidates = findMidnightAutoEndCandidates(attendanceRef.current, cairo.dateStr);
+      const candidates = rawCandidates.filter(record =>
+        canRunMidnightAutoEndForRecord({
+          record,
+          cairoDateStr: cairo.dateStr,
+          cairoHour: cairo.hour,
+          cairoMinute: cairo.minute,
+          currentUserId: activeStaff.id,
+          isAdmin: activeStaff.role === 'admin'
+        })
+      );
       if (candidates.length === 0) return;
 
       const adminMembers = staffMembersRef.current.filter(s => s.role === 'admin' && !s.isDisabled);
@@ -7333,6 +7886,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [isLoggedIn, archiveReady, cloudAttendanceReady, cloudStaffReady, cairoTodayStr, attendance, staffMembers]);
 
   const deleteAttendanceRecord = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manualAttendance'))) {
+      return;
+    }
     const existing = attendanceRef.current.find(r => r.id === id);
     const nextAttendance = attendanceRef.current.filter(r => r.id !== id);
     attendanceRef.current = nextAttendance;
@@ -7550,8 +8107,13 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Procedures
   const addProcedure = (proc: Omit<ProcedureItem, 'id'>) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'addProcedures'))) {
+      return;
+    }
     const newProc: ProcedureItem = {
       ...proc,
+      defaultPrice: roundMoney(proc.defaultPrice),
       id: 'proc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5)
     };
     const nextProcs = [...proceduresRef.current, newProc];
@@ -7570,9 +8132,17 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateProcedure = (id: string, updates: Partial<ProcedureItem>) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'editProcedures'))) {
+      return;
+    }
+    const cleanUpdates: Partial<ProcedureItem> = {
+      ...updates,
+      ...(updates.defaultPrice !== undefined ? { defaultPrice: roundMoney(updates.defaultPrice) } : {})
+    };
     const existing = proceduresRef.current.find(p => p.id === id);
-    const updated = existing ? { ...existing, ...updates } : undefined;
-    const nextProcs = proceduresRef.current.map(p => (p.id === id ? { ...p, ...updates } : p));
+    const updated = existing ? { ...existing, ...cleanUpdates } : undefined;
+    const nextProcs = proceduresRef.current.map(p => (p.id === id ? { ...p, ...cleanUpdates } : p));
     proceduresRef.current = nextProcs;
     saveToStorage('procedures', nextProcs);
     setProcedures(nextProcs);
@@ -7592,6 +8162,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteProcedure = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'deleteProcedures'))) {
+      return;
+    }
     const existing = proceduresRef.current.find(p => p.id === id);
     const nextProcs = proceduresRef.current.filter(p => p.id !== id);
     proceduresRef.current = nextProcs;
@@ -7605,6 +8179,19 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Operations
   const addOperation = (op: Omit<Operation, 'id' | 'createdAt'>): Operation => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (
+      activeStaff.isDisabled ||
+      (activeStaff.role !== 'admin' &&
+        !hasStaffPermission(activeStaff, 'addClinicalNotes') &&
+        !hasStaffPermission(activeStaff, 'editPatients'))
+    ) {
+      return {
+        ...op,
+        id: 'unauthorized',
+        createdAt: new Date().toISOString()
+      };
+    }
     const newOp: Operation = {
       ...op,
       id: 'op_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5),
@@ -7621,6 +8208,15 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateOperation = (id: string, updates: Partial<Operation>) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (
+      activeStaff.isDisabled ||
+      (activeStaff.role !== 'admin' &&
+        !hasStaffPermission(activeStaff, 'addClinicalNotes') &&
+        !hasStaffPermission(activeStaff, 'editPatients'))
+    ) {
+      return;
+    }
     const existing = operationsRef.current.find(o => o.id === id);
     const updated = existing ? { ...existing, ...updates } : undefined;
     if (updated) {
@@ -7637,6 +8233,15 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteOperation = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (
+      activeStaff.isDisabled ||
+      (activeStaff.role !== 'admin' &&
+        !hasStaffPermission(activeStaff, 'addClinicalNotes') &&
+        !hasStaffPermission(activeStaff, 'editPatients'))
+    ) {
+      return;
+    }
     const existing = operationsRef.current.find(o => o.id === id);
     const nextOps = operationsRef.current.filter(o => o.id !== id);
     operationsRef.current = nextOps;
@@ -7656,6 +8261,14 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Excel Data Import & Export
   const importPatientsFromExcel = (rows: any[]): number => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (
+      activeStaff.isDisabled ||
+      (activeStaff.role !== 'admin' &&
+        (!hasStaffPermission(activeStaff, 'addPatients') || !hasStaffPermission(activeStaff, 'manageSettings')))
+    ) {
+      return 0;
+    }
     let importedCount = 0;
     const newPatients: Patient[] = [];
 
@@ -7670,9 +8283,9 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         else if (cleanPhone.startsWith('20') && cleanPhone.length >= 12) cleanPhone = cleanPhone.slice(2);
         if (!cleanPhone.startsWith('0') && cleanPhone.length === 10) cleanPhone = '0' + cleanPhone;
 
-        const billed = Number(row['إجمالي العلاج'] || row['إجمالي الحساب'] || row['Total Billed'] || 0) || 0;
-        const paid = Number(row['المسدد'] || row['المدفوع'] || row['Total Paid'] || 0) || 0;
-        const remaining = Number(row['المتبقي'] || row['المديونية'] || row['Outstanding'] || (billed - paid)) || 0;
+        const billed = roundMoney(Number(row['إجمالي العلاج'] || row['إجمالي الحساب'] || row['Total Billed'] || 0) || 0);
+        const paid = roundMoney(Number(row['المسدد'] || row['المدفوع'] || row['Total Paid'] || 0) || 0);
+        const remaining = roundMoney(Number(row['المتبقي'] || row['المديونية'] || row['Outstanding'] || (billed - paid)) || 0);
 
         const newP: Patient = {
           id: 'pat_imp_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).slice(2, 5),
@@ -7806,6 +8419,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Weekdays
   const updateWeekdaySetting = (dayOfWeek: number, updates: Partial<WeekdaySetting>) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const existing = weekdaySettingsRef.current.find(w => w.dayOfWeek === dayOfWeek);
     const next = weekdaySettingsRef.current.map(w => (w.dayOfWeek === dayOfWeek ? { ...w, ...updates } : w));
     const updated = next.find(w => w.dayOfWeek === dayOfWeek);
@@ -7819,6 +8436,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Clinic Units & Medical Chairs
   const addUnit = (unitData: Omit<ClinicUnit, 'id'>): ClinicUnit => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return { ...unitData, id: 'unauthorized' };
+    }
     const newUnit: ClinicUnit = {
       ...unitData,
       id: 'unit_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5)
@@ -7840,6 +8461,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateUnit = (id: string, updates: Partial<ClinicUnit>) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const existing = unitsRef.current.find(u => u.id === id);
     const updated = existing ? { ...existing, ...updates } : undefined;
     const nextUnits = unitsRef.current.map(u => (u.id === id ? { ...u, ...updates } : u));
@@ -7862,6 +8487,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const toggleUnitDisabled = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const existing = unitsRef.current.find(u => u.id === id);
     const updated = existing ? { ...existing, isDisabled: !existing.isDisabled } : undefined;
     const nextUnits = unitsRef.current.map(u => (u.id === id ? { ...u, isDisabled: !u.isDisabled } : u));
@@ -7884,6 +8513,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteUnit = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const existing = unitsRef.current.find(u => u.id === id);
     const nextUnits = unitsRef.current.filter(u => u.id !== id);
     unitsRef.current = nextUnits;
@@ -7897,6 +8530,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Doctors Roster
   const addDoctor = (doctorData: Omit<Doctor, 'id'>): Doctor => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return { ...doctorData, id: 'unauthorized' };
+    }
     const newDoc: Doctor = {
       ...doctorData,
       id: 'doc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5)
@@ -7918,6 +8555,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateDoctor = (id: string, updates: Partial<Doctor>) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const existing = doctorsRef.current.find(d => d.id === id);
     const updated = existing ? { ...existing, ...updates } : undefined;
     const nextDocs = doctorsRef.current.map(d => (d.id === id ? { ...d, ...updates } : d));
@@ -7940,6 +8581,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const toggleDoctorDisabled = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const existing = doctorsRef.current.find(d => d.id === id);
     const updated = existing ? { ...existing, isDisabled: !existing.isDisabled } : undefined;
     const nextDocs = doctorsRef.current.map(d => (d.id === id ? { ...d, isDisabled: !d.isDisabled } : d));
@@ -7962,6 +8607,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteDoctor = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const existing = doctorsRef.current.find(d => d.id === id);
     const nextDocs = doctorsRef.current.filter(d => d.id !== id);
     doctorsRef.current = nextDocs;
@@ -7983,6 +8632,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Staff Members & Granular RBAC Permissions
   const addStaffMember = (memberData: Omit<StaffMember, 'id'>): StaffMember => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return { ...memberData, id: 'unauthorized' };
+    }
     const newMember: StaffMember = {
       ...memberData,
       username: memberData.username?.trim(),
@@ -8011,6 +8664,17 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateStaffMember = (id: string, updates: Partial<StaffMember>) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    const isExemptOnlyUpdate = Object.keys(updates).every(
+      k => k === 'exemptFromAttendance' || k === 'attendanceExemptDates'
+    );
+    const canEditStaff =
+      !activeStaff.isDisabled &&
+      (activeStaff.role === 'admin' ||
+        hasStaffPermission(activeStaff, 'manageSettings') ||
+        (isExemptOnlyUpdate && hasStaffPermission(activeStaff, 'manualAttendance')));
+    if (!canEditStaff) return;
+
     const cleanUpdates: Partial<StaffMember> = { ...updates };
     if (typeof cleanUpdates.username === 'string') cleanUpdates.username = cleanUpdates.username.trim();
     if (typeof cleanUpdates.password === 'string') cleanUpdates.password = cleanUpdates.password.trim();
@@ -8042,6 +8706,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const toggleStaffDisabled = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     if (id === currentUser.id) return;
     const existing = staffMembersRef.current.find(s => s.id === id);
     const updated = existing ? { ...existing, isDisabled: !existing.isDisabled } : undefined;
@@ -8065,6 +8733,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteStaffMember = (id: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     if (id === currentUser.id) return;
     const existing = staffMembersRef.current.find(s => s.id === id);
     const nextStaff = staffMembersRef.current.filter(s => s.id !== id);
@@ -8138,6 +8810,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateStaffPermission = (id: string, key: keyof StaffPermissions, value: boolean) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     // Prevent removing manageSettings from the currently logged-in admin if no other active member has it
     if (id === currentUser.id && key === 'manageSettings' && !value) {
       const anotherAdminExists = staffMembersRef.current.some(
@@ -8169,6 +8845,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const applyRolePresetPermissions = (id: string, role: StaffRole) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const preset = { ...DEFAULT_ROLE_PERMISSIONS[role] };
     if (id === currentUser.id && !preset.manageSettings) {
       const anotherAdminExists = staffMembersRef.current.some(
@@ -8200,6 +8880,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const setListItemColor = (listKey: ClinicColorListKey, itemName: string, color?: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const trimmedName = itemName.trim();
     if (!trimmedName) return;
     const prevColor = listItemColorsRef.current[listKey]?.[trimmedName];
@@ -8257,6 +8941,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Referral Sources & Patient Required Fields Settings
   const addReferralSource = (source: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const trimmed = source.trim();
     if (!trimmed) return;
     if (referralSourcesRef.current.some(s => s.trim().toLowerCase() === trimmed.toLowerCase())) return;
@@ -8268,6 +8956,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateReferralSource = (oldSource: string, newSource: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const trimmed = newSource.trim();
     if (!trimmed) return;
     const next = referralSourcesRef.current.map(s => (s === oldSource ? trimmed : s));
@@ -8279,6 +8971,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteReferralSource = (source: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const existed = referralSourcesRef.current.includes(source);
     const next = referralSourcesRef.current.filter(s => s !== source);
     referralSourcesRef.current = next;
@@ -8291,6 +8987,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const reorderReferralSources = (ordered: string[]) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     if (!Array.isArray(ordered)) return;
     referralSourcesRef.current = ordered;
     setReferralSources(ordered);
@@ -8300,6 +9000,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Patient Tags Settings (with cascading rename/delete across patient records)
   const addPatientTag = (tag: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const trimmed = tag.trim();
     if (!trimmed) return;
     if (patientTagsRef.current.some(t => t.trim().toLowerCase() === trimmed.toLowerCase())) return;
@@ -8311,6 +9015,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updatePatientTag = async (oldTag: string, newTag: string): Promise<void> => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const trimmed = newTag.trim();
     if (!trimmed || trimmed === oldTag) return;
     const exists = patientTagsRef.current.some(t => t !== oldTag && t.trim().toLowerCase() === trimmed.toLowerCase());
@@ -8358,6 +9066,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deletePatientTag = async (tag: string): Promise<void> => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const nextTags = patientTagsRef.current.filter(t => t !== tag);
     patientTagsRef.current = nextTags;
     setPatientTags(nextTags);
@@ -8402,6 +9114,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const reorderPatientTags = (ordered: string[]) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     if (!Array.isArray(ordered)) return;
     patientTagsRef.current = ordered;
     setPatientTags(ordered);
@@ -8410,6 +9126,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updatePatientRequiredFields = (updates: Partial<PatientFieldRequirements>) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const prev = patientRequiredFieldsRef.current;
     const next = { ...prev, ...updates };
     patientRequiredFieldsRef.current = next;
@@ -8420,6 +9140,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Expense Categories Settings (with optional default price)
   const addExpenseCategory = (name: string, defaultAmount?: number) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const trimmed = name.trim();
     if (!trimmed) return;
     if (expenseCategoriesRef.current.some(c => c.name.trim().toLowerCase() === trimmed.toLowerCase())) return;
@@ -8434,6 +9158,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateExpenseCategory = (oldName: string, newName: string, defaultAmount?: number) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const trimmed = newName.trim();
     if (!trimmed) return;
     const amt = Number(defaultAmount);
@@ -8481,6 +9209,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteExpenseCategory = (name: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const existed = expenseCategoriesRef.current.some(c => c.name === name);
     const next = expenseCategoriesRef.current.filter(c => c.name !== name);
     const safeNext = next.length > 0 ? next : [{ name: 'أخرى' }];
@@ -8494,6 +9226,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const reorderExpenseCategories = (ordered: ExpenseCategoryItem[]) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     if (!Array.isArray(ordered) || ordered.length === 0) return;
     expenseCategoriesRef.current = ordered;
     setExpenseCategories(ordered);
@@ -8504,6 +9240,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Patient Follow-Up Statuses CRUD
   const addPatientFollowUpStatus = (status: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const trimmed = status.trim();
     if (!trimmed) return;
     if (patientFollowUpStatusesRef.current.some(s => s.trim().toLowerCase() === trimmed.toLowerCase())) return;
@@ -8515,6 +9255,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updatePatientFollowUpStatus = (oldStatus: string, newStatus: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const trimmed = newStatus.trim();
     if (!trimmed || trimmed === oldStatus) return;
     const duplicate = patientFollowUpStatusesRef.current.some(
@@ -8531,6 +9275,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deletePatientFollowUpStatus = (status: string) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const next = patientFollowUpStatusesRef.current.filter(s => s !== status);
     patientFollowUpStatusesRef.current = next;
     setPatientFollowUpStatuses(next);
@@ -8540,6 +9288,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const reorderPatientFollowUpStatuses = (ordered: string[]) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     if (!Array.isArray(ordered) || ordered.length === 0) return;
     patientFollowUpStatusesRef.current = ordered;
     setPatientFollowUpStatuses(ordered);
@@ -8570,6 +9322,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           keepCurrentStatus?: boolean;
         }
   ): string | undefined => {
+    const activeStaffCheck = resolveActiveStaffFromRefs();
+    if (activeStaffCheck.isDisabled) return undefined;
     const existingPat = patientsRef.current.find(p => p.id === patientId);
     if (!existingPat) return undefined;
 
@@ -8670,7 +9424,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       reverted: false
     };
 
-    const nextLogs = [logEntry, ...patientFollowUpLogsRef.current].slice(0, 500);
+    const nextLogs = [logEntry, ...patientFollowUpLogsRef.current].slice(0, 2000);
     patientFollowUpLogsRef.current = nextLogs;
     saveToStorage('patient_follow_up_logs', nextLogs);
     setPatientFollowUpLogs(nextLogs);
@@ -8916,8 +9670,17 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       >
     >
   ) => {
+    const activeStaff = resolveActiveStaffFromRefs();
     const existing = patientFollowUpLogsRef.current.find(l => l.id === id);
     if (!existing) return;
+    if (
+      activeStaff.isDisabled ||
+      (activeStaff.role !== 'admin' &&
+        !hasStaffPermission(activeStaff, 'editPatients') &&
+        existing.changedById !== activeStaff.id)
+    ) {
+      return;
+    }
     const updated: PatientFollowUpLogEntry = {
       ...existing,
       ...(updates.previousStatus !== undefined ? { previousStatus: (updates.previousStatus.trim() || existing.previousStatus).slice(0, 80) } : {}),
@@ -8970,6 +9733,15 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deletePatientFollowUpLog = (id: string): { reverted: boolean; previousStatus?: string } => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (
+      activeStaff.isDisabled ||
+      (activeStaff.role !== 'admin' &&
+        !hasStaffPermission(activeStaff, 'editPatients') &&
+        !hasStaffPermission(activeStaff, 'deletePatients'))
+    ) {
+      return { reverted: false };
+    }
     const prevLogs = patientFollowUpLogsRef.current;
     const entryIdx = prevLogs.findIndex(l => l.id === id);
     const entry = entryIdx >= 0 ? prevLogs[entryIdx] : undefined;
@@ -9044,8 +9816,17 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!entry) return { success: false, message: 'لم يتم العثور على سجل المتابعة' };
     if (entry.reverted) return { success: false, message: 'تم الرجوع للحالة السابقة لهذا السجل مسبقاً' };
 
-    const targetPat = patientsRef.current.find(p => p.id === entry.patientId);
     const activeStaff = resolveActiveStaffFromRefs();
+    if (
+      activeStaff.isDisabled ||
+      (activeStaff.role !== 'admin' &&
+        !hasStaffPermission(activeStaff, 'editPatients') &&
+        entry.changedById !== activeStaff.id)
+    ) {
+      return { success: false, message: 'غير مصرح بهذا الإجراء' };
+    }
+
+    const targetPat = patientsRef.current.find(p => p.id === entry.patientId);
 
     let updatedPat: Patient | undefined;
     if (targetPat) {
@@ -9319,6 +10100,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateStaffAlertSettings = (updates: Partial<StaffAlertSettings>) => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return;
+    }
     const prev = staffAlertSettingsRef.current;
     const rawDelay = updates.appointmentDelayMinutes ?? prev.appointmentDelayMinutes;
     const clampedDelay = Math.max(1, Math.min(480, Number(rawDelay) || 1));
@@ -9336,6 +10121,10 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const revertAuditLogEntry = (logId: string): { success: boolean; message: string } => {
+    const activeStaff = resolveActiveStaffFromRefs();
+    if (activeStaff.isDisabled || (activeStaff.role !== 'admin' && !hasStaffPermission(activeStaff, 'manageSettings'))) {
+      return { success: false, message: 'غير مصرح بإرجاع السجلات' };
+    }
     const entry = auditLogsRef.current.find(l => l.id === logId);
     if (!entry) return { success: false, message: 'لم يتم العثور على سجل التعديل' };
     if (entry.reverted) return { success: false, message: 'تم إرجاع هذا التعديل مسبقاً' };
@@ -9936,6 +10725,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     clockOut,
     editAttendanceRecord,
     deleteAttendanceRecord,
+    retryAttendanceSync,
+    refreshAttendanceFromServer,
     openAttendanceShiftEdit,
     clearEditingAttendanceId,
     sendWhatsAppAlert,
@@ -10107,13 +10898,15 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       cloudError,
       cloudNeedsConsoleSetup,
       pendingCloudCount,
+      pendingAttendanceIds,
+      attendanceSyncErrors,
       auditLogs,
       staffComments,
       editingAttendanceId,
       ...stableActions
     }),
     [
-      patients,
+      effectivePatients,
       appointments,
       invoices,
       payments,
@@ -10180,6 +10973,8 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       cloudError,
       cloudNeedsConsoleSetup,
       pendingCloudCount,
+      pendingAttendanceIds,
+      attendanceSyncErrors,
       auditLogs,
       staffComments,
       editingAttendanceId,

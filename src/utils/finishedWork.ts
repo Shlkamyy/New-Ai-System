@@ -1243,24 +1243,28 @@ export function computeFinishedWorkTaskProgress(
   }
 
   const directEligibleCount = finishedCount + bookedApptCount + closedFileCount;
+  const prevWorkDayActive = activeCandidates.filter(c => c.isPrevWorkDay);
+  const olderActive = activeCandidates.filter(c => !c.isPrevWorkDay);
   const maxAchievable = activeCandidates.length + directEligibleCount + carryoverIn;
-  const quotaTarget = maxAchievable > 0 ? Math.min(effectiveQuota, maxAchievable) : 0;
+  const baseQuotaTarget = maxAchievable > 0 ? Math.min(effectiveQuota, maxAchievable) : 0;
 
-  const carryoverCredit = Math.min(quotaTarget, carryoverIn);
+  const carryoverCredit = Math.min(baseQuotaTarget, carryoverIn);
   const greenDoneCount = finishedCount + bookedApptCount + carryoverCredit;
   const redClosedCount = closedFileCount;
   const doneCount = greenDoneCount + redClosedCount;
   const deferredCount = unreachableCount + notInterestedCount + postponeWeekCount;
+
+  // All eligible previous working day patients MUST remain active until processed, even if > 5.
+  // Older candidates only backfill remaining slots below effectiveQuota.
+  const remainingQuotaAfterDone = Math.max(0, effectiveQuota - doneCount);
+  const neededOlderSlots = Math.max(0, remainingQuotaAfterDone - prevWorkDayActive.length);
+  const chosenActive = [
+    ...prevWorkDayActive,
+    ...olderActive.slice(0, neededOlderSlots)
+  ];
+  const quotaTarget = Math.max(baseQuotaTarget, doneCount + prevWorkDayActive.length);
   const remainingCount = Math.max(0, quotaTarget - doneCount);
   const surplusCount = Math.max(0, directEligibleCount + carryoverIn - FINISHED_WORK_DEFAULT_QUOTA);
-
-  const neededActiveSlots = Math.max(0, effectiveQuota - doneCount);
-  const prevWorkDayActive = activeCandidates.filter(c => c.isPrevWorkDay);
-  const olderActive = activeCandidates.filter(c => !c.isPrevWorkDay);
-  const chosenActive = [
-    ...prevWorkDayActive.slice(0, neededActiveSlots),
-    ...olderActive.slice(0, Math.max(0, neededActiveSlots - prevWorkDayActive.length))
-  ];
   const hasMoreCandidates = activeCandidates.length > chosenActive.length || hasMoreFallbackActive;
 
   const selectedPool = [...chosenActive, ...actedTodayCandidates].sort(sortDesc);

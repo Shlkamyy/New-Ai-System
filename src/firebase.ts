@@ -74,4 +74,6 @@ async function testConnection() {
   }
 }
 
-void testConnection();
+if (typeof window !== 'undefined') {
+  void testConnection();
+}

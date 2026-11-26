@@ -4390,24 +4390,9 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [isLoggedIn, cloudStaffReady, currentUserId, currentUser.isDisabled]);
 
   const effectivePatients = useMemo(() => {
-    if (currentUser.role === 'doctor' && currentUser.permissions?.patientsOwnOnly) {
-      const docId = currentUser.doctorId;
-      const docName = currentUser.name;
-      const allowedPatientIds = new Set<string>();
-      appointments.forEach(a => {
-        if ((docId && a.doctorId === docId) || (docName && a.doctorName === docName)) {
-          if (a.patientId) allowedPatientIds.add(a.patientId);
-        }
-      });
-      patients.forEach(p => {
-        if (docName && p.doctorName === docName) {
-          allowedPatientIds.add(p.id);
-        }
-      });
-      return patients.filter(p => allowedPatientIds.has(p.id));
-    }
-    return patients;
-  }, [patients, appointments, currentUser]);
+    if (!doctorOwnedPatientIdSet) return patients;
+    return patients.filter(patient => doctorOwnedPatientIdSet.has(patient.id));
+  }, [patients, doctorOwnedPatientIdSet]);
 
   const setCurrentUser = (user: Pick<StaffMember, 'id'> | StaffMember) => {
     currentUserIdRef.current = user.id;
@@ -4568,12 +4553,26 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return set;
   }, [restrictedUnit, appointments, patients]);
 
+  const doctorOwnedPatientIdSet = useMemo(() => {
+    if (currentUser.role !== 'doctor' || !currentUser.permissions?.patientsOwnOnly) return null;
+    const doctorId = currentUser.doctorId;
+    const ids = new Set<string>();
+    if (!doctorId) return ids;
+    appointments.forEach(appointment => {
+      if (appointment.doctorId === doctorId && appointment.patientId) {
+        ids.add(appointment.patientId);
+      }
+    });
+    return ids;
+  }, [currentUser.role, currentUser.doctorId, currentUser.permissions?.patientsOwnOnly, appointments]);
+
   const isPatientAllowed = useCallback(
     (patientId: string): boolean => {
-      if (!restrictedPatientIdSet) return true;
-      return restrictedPatientIdSet.has(patientId);
+      const allowedByBranch = !restrictedPatientIdSet || restrictedPatientIdSet.has(patientId);
+      const allowedByDoctor = !doctorOwnedPatientIdSet || doctorOwnedPatientIdSet.has(patientId);
+      return allowedByBranch && allowedByDoctor;
     },
-    [restrictedPatientIdSet]
+    [restrictedPatientIdSet, doctorOwnedPatientIdSet]
   );
 
   const [patientDetailFocusNotes, setPatientDetailFocusNotes] = useState(false);
@@ -5628,6 +5627,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const goToPatient = (patientId: string, options?: { focusNotes?: boolean }) => {
+    if (!isPatientAllowed(patientId)) return;
     setIsDrawerOpen(false);
     setPatientDetailFocusNotes(Boolean(options?.focusNotes));
     commitNavigation('patient_detail', patientId, 0, true);
@@ -5819,6 +5819,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updatePatient = (id: string, updates: Partial<Patient>) => {
     const activeStaff = resolveActiveStaffFromRefs();
     if (!hasStaffPermission(activeStaff, 'editPatients')) return;
+    if (activeStaff.role === 'doctor' && activeStaff.permissions?.patientsOwnOnly && !effectivePatients.some(patient => patient.id === id)) return;
     const existingPat = patientsRef.current.find(p => p.id === id);
     const cleanUpdates: Partial<Patient> = updates.tags
       ? { ...updates, tags: updates.tags.filter(t => !REMOVED_LEGACY_STATUS_TAGS.has(t)) }
@@ -5961,6 +5962,7 @@ export const ClinicProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deletePatient = (id: string) => {
     const activeStaff = resolveActiveStaffFromRefs();
     if (!hasStaffPermission(activeStaff, 'deletePatients')) return;
+    if (activeStaff.role === 'doctor' && activeStaff.permissions?.patientsOwnOnly && !effectivePatients.some(patient => patient.id === id)) return;
     const existingPat = patientsRef.current.find(p => p.id === id);
     const nextPatients = patientsRef.current.filter(p => p.id !== id);
     patientsRef.current = nextPatients;

@@ -315,10 +315,10 @@ export const Sidebar: React.FC = React.memo(() => {
             <button
               type="button"
               onClick={() => setIsDrawerOpen(false)}
-              className="absolute left-4 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-xl bg-[#f0f6f5] hover:bg-[#e4f0ed] dark:bg-[#16242f] text-[#172f3d] dark:text-white cursor-pointer"
+              className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-lg bg-[#f0f6f5] hover:bg-[#e4f0ed] dark:bg-[#16242f] text-[#172f3d] dark:text-white cursor-pointer"
               aria-label="إغلاق القائمة"
             >
-              <X className="w-5 h-5 text-[#087e83] dark:text-[#2dd4bf]" />
+              <X className="w-4 h-4 text-[#087e83] dark:text-[#2dd4bf]" />
             </button>
           )}
         </div>

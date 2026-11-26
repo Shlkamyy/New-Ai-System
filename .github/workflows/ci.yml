@@ -25,9 +25,7 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        # The repository currently has a Vite/esbuild peer-version conflict.
-        # This flag lets CI proceed to the checks without changing project dependencies.
-        run: npm install --no-package-lock --legacy-peer-deps
+        run: npm install --no-package-lock
 
       - name: TypeScript check
         run: npm run lint

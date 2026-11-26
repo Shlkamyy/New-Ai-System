@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Dr Shlkamy</title>
+    <meta name="description" content="نظام إدارة العيادات لدكتور محمد شلقامي (Dr Shlkamy): المواعيد والتقويم، ملفات وسجلات المرضى، الفواتير والمدفوعات، بصمة الشفت، ورسائل واتساب." />
+    <meta property="og:title" content="Dr Shlkamy" />
+    <meta property="og:description" content="نظام إدارة العيادات لدكتور محمد شلقامي (Dr Shlkamy): المواعيد والتقويم، ملفات وسجلات المرضى، الفواتير والمدفوعات، بصمة الشفت، ورسائل واتساب." />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#087e83" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Dr Shlkamy" />
+    <meta name="app-build-id" content="__CLINICFLOW_BUILD_ID__" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/pwa-192x192.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Allura&family=Cairo:wght@400;500;600;700;800;900&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      (function () {
+        var buildMeta = document.querySelector('meta[name="app-build-id"]');
+        var currentBuildId = buildMeta ? buildMeta.getAttribute('content') : '';
+        var isProdBuild = currentBuildId && currentBuildId !== '__CLINICFLOW_' + 'BUILD_ID__';
+        var reloading = false;
+
+        function safeReload(targetBuildId) {
+          if (reloading) return;
+          try {
+            var lastKey = 'cf_last_auto_reload_build';
+            var lastTsKey = 'cf_last_auto_reload_ts';
+            var lastBuild = sessionStorage.getItem(lastKey);
+            var lastTs = Number(sessionStorage.getItem(lastTsKey) || '0');
+            if (targetBuildId && lastBuild === targetBuildId && Date.now() - lastTs < 30000) {
+              return;
+            }
+            if (Date.now() - lastTs < 8000) {
+              return;
+            }
+            sessionStorage.setItem(lastKey, targetBuildId || 'sw');
+            sessionStorage.setItem(lastTsKey, String(Date.now()));
+          } catch {}
+          reloading = true;
+          window.location.reload();
+        }
+
+        if ('serviceWorker' in navigator) {
+          var hadController = Boolean(navigator.serviceWorker.controller);
+
+          navigator.serviceWorker.addEventListener('controllerchange', function () {
+            if (hadController) {
+              safeReload('sw-controller');
+            }
+            hadController = true;
+          });
+
+          navigator.serviceWorker.addEventListener('message', function (event) {
+            if (event.data && event.data.type === 'SW_ACTIVATED' && isProdBuild) {
+              if (event.data.buildId && event.data.buildId !== currentBuildId) {
+                safeReload(event.data.buildId);
+              }
+            }
+          });
+
+          window.addEventListener('load', function () {
+            navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' })
+              .then(function (reg) {
+                console.log('[ClinicFlow PWA] Service Worker registered:', reg.scope);
+                reg.update().catch(function () {});
+
+                var checkServerVersion = function () {
+                  reg.update().catch(function () {});
+                  if (!isProdBuild) return;
+                  fetch('/version.json?t=' + Date.now(), { cache: 'no-store' })
+                    .then(function (r) { return r.ok ? r.json() : null; })
+                    .then(function (data) {
+                      if (data && data.buildId && data.buildId !== currentBuildId) {
+                        reg.update().catch(function () {});
+                        safeReload(data.buildId);
+                      }
+                    })
+                    .catch(function () {});
+                };
+
+                if (isProdBuild) {
+                  setTimeout(checkServerVersion, 1500);
+                }
+
+                document.addEventListener('visibilitychange', function () {
+                  if (document.visibilityState === 'visible') {
+                    checkServerVersion();
+                  }
+                });
+                window.addEventListener('focus', checkServerVersion);
+                window.addEventListener('online', checkServerVersion);
+              })
+              .catch(function (err) {
+                console.warn('[ClinicFlow PWA] Service Worker registration failed:', err);
+              });
+          });
+        }
+      })();
+    </script>
+  </head>
+  <body class="bg-[#f4f7f9] text-[#172f3d] font-sans antialiased selection:bg-[#bce7d9] selection:text-[#123844]">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

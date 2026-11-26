@@ -1,0 +1,951 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Reusable Primitives & Hardened Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        request.auth.token.email is string &&
+        request.auth.token.email.size() >= 3 &&
+        request.auth.token.email.size() <= 120;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'muhammed.shlkamy@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Clinic session supports both verified Google auth and anonymous clinic auth
+    function isClinicSession() {
+      return isSignedIn() && (
+        request.auth.token.firebase.sign_in_provider == 'anonymous' ||
+        isVerifiedUser()
+      );
+    }
+
+    function hasClinicResourceOwner() {
+      return isClinicSession() && existing().ownerEmail == 'muhammed.shlkamy@gmail.com';
+    }
+
+    function canGetClinicDoc() {
+      return isClinicSession() && (resource == null || existing().ownerEmail == 'muhammed.shlkamy@gmail.com');
+    }
+
+    function hasValidBaseMeta(data) {
+      return data.ownerEmail == 'muhammed.shlkamy@gmail.com' &&
+        data.allowedEmails is list &&
+        data.allowedEmails.size() >= 1 &&
+        data.allowedEmails.size() <= 25 &&
+        data.allowedEmails[0] is string &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidClinicConfig(data) {
+      return data.keys().hasAll([
+          'ownerEmail', 'allowedEmails', 'clinicStartHour', 'clinicEndHour',
+          'weekdaySettings', 'referralSources', 'patientTags', 'patientRequiredFields',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'ownerEmail', 'allowedEmails', 'clinicStartHour', 'clinicEndHour',
+          'weekdaySettings', 'referralSources', 'patientTags', 'patientRequiredFields',
+          'staffAlertSettings', 'expenseCategories', 'patientFollowUpStatuses', 'listItemColors',
+          'createdAt', 'updatedAt'
+        ]) &&
+        hasValidBaseMeta(data) &&
+        data.clinicStartHour is number && data.clinicStartHour >= 0 && data.clinicStartHour <= 23 &&
+        data.clinicEndHour is number && data.clinicEndHour >= 1 && data.clinicEndHour <= 24 &&
+        data.weekdaySettings is list && data.weekdaySettings.size() <= 14 &&
+        data.referralSources is list && data.referralSources.size() <= 100 &&
+        data.patientTags is list && data.patientTags.size() <= 100 &&
+        data.patientRequiredFields is map &&
+        (!('staffAlertSettings' in data) || data.staffAlertSettings is map) &&
+        (!('expenseCategories' in data) || (data.expenseCategories is list && data.expenseCategories.size() <= 100)) &&
+        (!('patientFollowUpStatuses' in data) || (data.patientFollowUpStatuses is list && data.patientFollowUpStatuses.size() <= 100)) &&
+        (!('listItemColors' in data) || data.listItemColors is map);
+    }
+
+    function isValidStaffMember(data) {
+      return data.keys().hasAll([
+          'id', 'name', 'role', 'jobTitle', 'phone', 'permissions',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'name', 'username', 'password', 'email', 'recoveryPin',
+          'role', 'jobTitle', 'phone', 'branchName', 'restrictedBranchId', 'doctorId', 'isDisabled',
+          'exemptFromAttendance', 'attendanceExemptDates',
+          'defaultUnitByDay', 'shiftStartTime', 'shiftEndTime',
+          'permissions', 'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        hasValidBaseMeta(data) &&
+        isValidId(data.id) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        data.role in ['admin', 'doctor', 'receptionist', 'nurse', 'accountant'] &&
+        data.jobTitle is string && data.jobTitle.size() <= 120 &&
+        data.phone is string && data.phone.size() <= 32 &&
+        data.permissions is map &&
+        (!('username' in data) || (data.username is string && data.username.size() <= 64)) &&
+        (!('password' in data) || (data.password is string && data.password.size() <= 128)) &&
+        (!('email' in data) || (data.email is string && data.email.size() <= 120)) &&
+        (!('recoveryPin' in data) || (data.recoveryPin is string && data.recoveryPin.size() <= 32)) &&
+        (!('branchName' in data) || (data.branchName is string && data.branchName.size() <= 120)) &&
+        (!('restrictedBranchId' in data) || (data.restrictedBranchId is string && data.restrictedBranchId.size() <= 128)) &&
+        (!('doctorId' in data) || (data.doctorId is string && data.doctorId.size() <= 128)) &&
+        (!('isDisabled' in data) || data.isDisabled is bool) &&
+        (!('exemptFromAttendance' in data) || data.exemptFromAttendance is bool) &&
+        (!('attendanceExemptDates' in data) || (data.attendanceExemptDates is list && data.attendanceExemptDates.size() <= 120 && (data.attendanceExemptDates.size() == 0 || data.attendanceExemptDates[0] is string))) &&
+        (!('defaultUnitByDay' in data) || data.defaultUnitByDay is map) &&
+        (!('shiftStartTime' in data) || (data.shiftStartTime is string && data.shiftStartTime.size() <= 16)) &&
+        (!('shiftEndTime' in data) || (data.shiftEndTime is string && data.shiftEndTime.size() <= 16));
+    }
+
+    function isValidDoctor(data) {
+      return data.keys().hasAll([
+          'id', 'name', 'specialty', 'phone', 'color',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'name', 'specialty', 'phone', 'color', 'isDisabled',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        hasValidBaseMeta(data) &&
+        isValidId(data.id) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        data.specialty is string && data.specialty.size() <= 200 &&
+        data.phone is string && data.phone.size() <= 32 &&
+        data.color is string && data.color.size() <= 24 &&
+        (!('isDisabled' in data) || data.isDisabled is bool);
+    }
+
+    function isValidUnit(data) {
+      return data.keys().hasAll([
+          'id', 'name', 'chairCount', 'description',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'name', 'chairCount', 'description', 'isDisabled',
+          'latitude', 'longitude', 'allowedRadiusMeters',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        hasValidBaseMeta(data) &&
+        isValidId(data.id) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        data.chairCount is number && data.chairCount >= 1 && data.chairCount <= 50 &&
+        data.description is string && data.description.size() <= 500 &&
+        (!('isDisabled' in data) || data.isDisabled is bool) &&
+        (!('latitude' in data) || data.latitude is number) &&
+        (!('longitude' in data) || data.longitude is number) &&
+        (!('allowedRadiusMeters' in data) || data.allowedRadiusMeters is number);
+    }
+
+    function isValidProcedure(data) {
+      return data.keys().hasAll([
+          'id', 'name', 'category', 'defaultPrice',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'name', 'category', 'defaultPrice',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        hasValidBaseMeta(data) &&
+        isValidId(data.id) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 200 &&
+        data.category is string && data.category.size() <= 100 &&
+        data.defaultPrice is number && data.defaultPrice >= 0;
+    }
+
+    function isValidExpense(data) {
+      return data.keys().hasAll([
+          'id', 'title', 'category', 'amount', 'date', 'loggedBy',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'title', 'category', 'amount', 'date', 'unitId', 'unitName',
+          'notes', 'loggedBy', 'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        hasValidBaseMeta(data) &&
+        isValidId(data.id) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 250 &&
+        data.category is string && data.category.size() <= 64 &&
+        data.amount is number && data.amount >= 0 &&
+        data.date is string && data.date.size() <= 20 &&
+        data.loggedBy is string && data.loggedBy.size() <= 120 &&
+        (!('unitId' in data) || (data.unitId is string && data.unitId.size() <= 128)) &&
+        (!('unitName' in data) || (data.unitName is string && data.unitName.size() <= 120)) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasAll([
+          'id', 'title', 'dueDate', 'assignedTo', 'priority', 'recurrence',
+          'isCompleted', 'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'title', 'description', 'dueDate', 'assignedTo', 'priority', 'recurrence',
+          'isCompleted', 'adminCompleted', 'completedAt', 'completedBy', 'completedDates',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        hasValidBaseMeta(data) &&
+        isValidId(data.id) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 250 &&
+        data.dueDate is string && data.dueDate.size() <= 20 &&
+        data.assignedTo is string && data.assignedTo.size() <= 120 &&
+        data.priority in ['low', 'medium', 'high'] &&
+        data.recurrence in ['once', 'daily', 'weekly', 'monthly'] &&
+        data.isCompleted is bool &&
+        (!('adminCompleted' in data) || data.adminCompleted is bool) &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 1000)) &&
+        (!('completedAt' in data) || (data.completedAt is string && data.completedAt.size() <= 40)) &&
+        (!('completedBy' in data) || (data.completedBy is string && data.completedBy.size() <= 120)) &&
+        (!('completedDates' in data) || data.completedDates is map);
+    }
+
+    function isValidAttendance(data) {
+      return data.keys().hasAll([
+          'id', 'userId', 'userName', 'unitId', 'unitName', 'date', 'clockIn', 'status',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'userId', 'userName', 'unitId', 'unitName', 'date', 'clockIn',
+          'clockOut', 'isManual', 'manualReason', 'status',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        hasValidBaseMeta(data) &&
+        isValidId(data.id) &&
+        data.userId is string && data.userId.size() <= 128 &&
+        data.userName is string && data.userName.size() <= 120 &&
+        data.unitId is string && data.unitId.size() <= 128 &&
+        data.unitName is string && data.unitName.size() <= 120 &&
+        data.date is string && data.date.size() <= 20 &&
+        data.clockIn is string && data.clockIn.size() <= 16 &&
+        data.status in ['active', 'completed'] &&
+        (!('clockOut' in data) || (data.clockOut is string && data.clockOut.size() <= 16)) &&
+        (!('isManual' in data) || data.isManual is bool) &&
+        (!('manualReason' in data) || (data.manualReason is string && data.manualReason.size() <= 300));
+    }
+
+    function isValidPrescription(data) {
+      return data.keys().hasAll([
+          'id', 'prescriptionNumber', 'patientId', 'patientName', 'date',
+          'doctorId', 'doctorName', 'medications',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'prescriptionNumber', 'patientId', 'patientName', 'patientAge', 'date',
+          'doctorId', 'doctorName', 'diagnosis', 'medications', 'notes',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        hasValidBaseMeta(data) &&
+        isValidId(data.id) &&
+        data.prescriptionNumber is string && data.prescriptionNumber.size() <= 64 &&
+        data.patientId is string && data.patientId.size() <= 128 &&
+        data.patientName is string && data.patientName.size() <= 160 &&
+        data.date is string && data.date.size() <= 20 &&
+        data.doctorId is string && data.doctorId.size() <= 128 &&
+        data.doctorName is string && data.doctorName.size() <= 120 &&
+        data.medications is list && data.medications.size() <= 30 &&
+        (!('patientAge' in data) || data.patientAge is number) &&
+        (!('diagnosis' in data) || (data.diagnosis is string && data.diagnosis.size() <= 400)) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000));
+    }
+
+    function isValidWhatsAppTemplate(data) {
+      return data.keys().hasAll([
+          'id', 'title', 'triggerEvent', 'timingOffsetMinutes', 'messageTemplate', 'isActive',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'title', 'triggerEvent', 'timingOffsetMinutes',
+          'timingDirection', 'timingValue', 'timingUnit', 'procedureId', 'procedureName',
+          'messageTemplate', 'isActive',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        hasValidBaseMeta(data) &&
+        isValidId(data.id) &&
+        data.title is string && data.title.size() <= 200 &&
+        data.triggerEvent is string && data.triggerEvent.size() <= 64 &&
+        data.timingOffsetMinutes is number &&
+        data.messageTemplate is string && data.messageTemplate.size() <= 2000 &&
+        data.isActive is bool &&
+        (!('timingDirection' in data) || data.timingDirection in ['at', 'before', 'after']) &&
+        (!('timingValue' in data) || (data.timingValue is number && data.timingValue >= 0)) &&
+        (!('timingUnit' in data) || data.timingUnit in ['minute', 'hour', 'day', 'week', 'month']) &&
+        (!('procedureId' in data) || (data.procedureId is string && data.procedureId.size() <= 128)) &&
+        (!('procedureName' in data) || (data.procedureName is string && data.procedureName.size() <= 200));
+    }
+
+    function isValidWhatsAppAlert(data) {
+      return data.keys().hasAll([
+          'id', 'patientId', 'patientName', 'patientPhone', 'templateTitle',
+          'renderedMessage', 'status', 'scheduledFor',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'patientId', 'patientName', 'patientPhone', 'templateTitle',
+          'renderedMessage', 'status', 'scheduledFor', 'sentAt',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        hasValidBaseMeta(data) &&
+        isValidId(data.id) &&
+        data.patientId is string && data.patientId.size() <= 128 &&
+        data.patientName is string && data.patientName.size() <= 160 &&
+        data.patientPhone is string && data.patientPhone.size() <= 40 &&
+        data.templateTitle is string && data.templateTitle.size() <= 200 &&
+        data.renderedMessage is string && data.renderedMessage.size() <= 2500 &&
+        data.status in ['pending', 'opened', 'sent', 'dismissed'] &&
+        data.scheduledFor is string && data.scheduledFor.size() <= 40 &&
+        (!('sentAt' in data) || (data.sentAt is string && data.sentAt.size() <= 64));
+    }
+
+    function isValidSyncOverlay(data) {
+      return data.keys().hasAll([
+          'id', 'isDeleted', 'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'isDeleted', 'payload', 'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        hasValidBaseMeta(data) &&
+        isValidId(data.id) &&
+        data.isDeleted is bool &&
+        (!('payload' in data) || data.payload is map);
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll([
+          'id', 'timestamp', 'userId', 'userName', 'action', 'entityType',
+          'entityId', 'entityName', 'description',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'timestamp', 'userId', 'userName', 'action', 'entityType',
+          'entityId', 'entityName', 'description', 'previousData', 'newData',
+          'targetView', 'targetId', 'reverted',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        hasValidBaseMeta(data) &&
+        isValidId(data.id) &&
+        data.timestamp is string && data.timestamp.size() <= 64 &&
+        data.userId is string && data.userId.size() <= 128 &&
+        data.userName is string && data.userName.size() <= 120 &&
+        data.action in ['add', 'update', 'delete', 'status_change'] &&
+        data.entityType in ['patient', 'appointment', 'invoice', 'payment', 'expense', 'task', 'procedure', 'staff', 'setting', 'attendance'] &&
+        data.entityId is string && data.entityId.size() <= 128 &&
+        data.entityName is string && data.entityName.size() <= 200 &&
+        data.description is string && data.description.size() <= 1000 &&
+        (!('targetView' in data) || (data.targetView is string && data.targetView.size() <= 64)) &&
+        (!('targetId' in data) || (data.targetId is string && data.targetId.size() <= 128)) &&
+        (!('reverted' in data) || data.reverted is bool) &&
+        (!('previousData' in data) || data.previousData is map) &&
+        (!('newData' in data) || data.newData is map);
+    }
+
+    function isValidPatientFollowUpLog(data) {
+      return data.keys().hasAll([
+          'id', 'patientId', 'patientName', 'patientPhone', 'previousStatus',
+          'newStatus', 'changedBy', 'changedById', 'timestamp',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'patientId', 'patientName', 'patientPhone', 'previousStatus',
+          'newStatus', 'changedBy', 'changedById', 'timestamp', 'notes',
+          'audioDataUrl', 'audioDurationSeconds', 'feedbackOutcome', 'feedbackDate',
+          'taskType', 'finishedWorkAction', 'finishedWorkAttempt', 'snoozeUntilDate', 'actionDate',
+          'reverted', 'revertedAt', 'revertedBy',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        hasValidBaseMeta(data) &&
+        isValidId(data.id) &&
+        data.patientId is string && data.patientId.size() >= 1 && data.patientId.size() <= 128 &&
+        data.patientName is string && data.patientName.size() <= 160 &&
+        data.patientPhone is string && data.patientPhone.size() <= 40 &&
+        data.previousStatus is string && data.previousStatus.size() <= 80 &&
+        data.newStatus is string && data.newStatus.size() <= 80 &&
+        data.changedBy is string && data.changedBy.size() <= 120 &&
+        data.changedById is string && data.changedById.size() <= 128 &&
+        data.timestamp is string && data.timestamp.size() <= 64 &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000)) &&
+        (!('audioDataUrl' in data) || (data.audioDataUrl is string && data.audioDataUrl.size() <= 400000)) &&
+        (!('audioDurationSeconds' in data) || (data.audioDurationSeconds is number && data.audioDurationSeconds >= 0 && data.audioDurationSeconds <= 120)) &&
+        (!('feedbackOutcome' in data) || data.feedbackOutcome in ['done', 'not_done']) &&
+        (!('feedbackDate' in data) || (data.feedbackDate is string && data.feedbackDate.size() <= 24)) &&
+        (!('taskType' in data) || data.taskType in ['feedback', 'finished_work']) &&
+        (!('finishedWorkAction' in data) || data.finishedWorkAction in ['finished', 'unreachable', 'not_interested', 'postpone_week', 'closed_file']) &&
+        (!('finishedWorkAttempt' in data) || (data.finishedWorkAttempt is number && data.finishedWorkAttempt >= 1 && data.finishedWorkAttempt <= 1000)) &&
+        (!('snoozeUntilDate' in data) || (data.snoozeUntilDate is string && data.snoozeUntilDate.size() <= 24)) &&
+        (!('actionDate' in data) || (data.actionDate is string && data.actionDate.size() <= 24)) &&
+        (!('reverted' in data) || data.reverted is bool) &&
+        (!('revertedAt' in data) || (data.revertedAt is string && data.revertedAt.size() <= 64)) &&
+        (!('revertedBy' in data) || (data.revertedBy is string && data.revertedBy.size() <= 120));
+    }
+
+    function isValidStaffAlertLog(data) {
+      return data.keys().hasAll([
+          'id', 'alertType', 'targetKey', 'title', 'message', 'status',
+          'triggeredAt', 'lastUpdatedAt', 'interactions',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'alertType', 'targetKey', 'title', 'message',
+          'patientId', 'patientName', 'appointmentId', 'appointmentDate', 'appointmentTime',
+          'targetStaffIds', 'targetStaffNames', 'channel', 'status',
+          'triggeredAt', 'lastUpdatedAt', 'lastInteractionBy', 'lastInteractionById',
+          'lastInteractionLabel', 'interactions',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        hasValidBaseMeta(data) &&
+        isValidId(data.id) &&
+        data.alertType in ['appointment', 'shift_start', 'shift_end', 'test'] &&
+        data.targetKey is string && data.targetKey.size() >= 1 && data.targetKey.size() <= 128 &&
+        data.title is string && data.title.size() <= 200 &&
+        data.message is string && data.message.size() <= 1000 &&
+        data.status in ['active', 'snoozed', 'resolved', 'dismissed'] &&
+        data.triggeredAt is string && data.triggeredAt.size() <= 64 &&
+        data.lastUpdatedAt is string && data.lastUpdatedAt.size() <= 64 &&
+        data.interactions is list && data.interactions.size() <= 30 &&
+        (data.interactions.size() == 0 || data.interactions[0] is map) &&
+        (!('patientId' in data) || (data.patientId is string && data.patientId.size() <= 128)) &&
+        (!('patientName' in data) || (data.patientName is string && data.patientName.size() <= 160)) &&
+        (!('appointmentId' in data) || (data.appointmentId is string && data.appointmentId.size() <= 128)) &&
+        (!('appointmentDate' in data) || (data.appointmentDate is string && data.appointmentDate.size() <= 24)) &&
+        (!('appointmentTime' in data) || (data.appointmentTime is string && data.appointmentTime.size() <= 24)) &&
+        (!('targetStaffIds' in data) || (data.targetStaffIds is list && data.targetStaffIds.size() <= 50 && (data.targetStaffIds.size() == 0 || data.targetStaffIds[0] is string))) &&
+        (!('targetStaffNames' in data) || (data.targetStaffNames is list && data.targetStaffNames.size() <= 50 && (data.targetStaffNames.size() == 0 || data.targetStaffNames[0] is string))) &&
+        (!('channel' in data) || data.channel in ['website_only', 'mobile_and_website']) &&
+        (!('lastInteractionBy' in data) || (data.lastInteractionBy is string && data.lastInteractionBy.size() <= 120)) &&
+        (!('lastInteractionById' in data) || (data.lastInteractionById is string && data.lastInteractionById.size() <= 128)) &&
+        (!('lastInteractionLabel' in data) || (data.lastInteractionLabel is string && data.lastInteractionLabel.size() <= 200));
+    }
+
+    function isValidStaffComment(data) {
+      return data.keys().hasAll([
+          'id', 'staffId', 'staffName', 'content', 'repeatCount', 'history', 'createdBy',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'staffId', 'staffName', 'content', 'repeatCount', 'history', 'createdBy',
+          'isHidden', 'hiddenAt', 'durationDays', 'durationLabel', 'expiresAt',
+          'ownerEmail', 'allowedEmails', 'createdAt', 'updatedAt'
+        ]) &&
+        hasValidBaseMeta(data) &&
+        isValidId(data.id) &&
+        data.staffId is string && data.staffId.size() >= 1 && data.staffId.size() <= 128 &&
+        data.staffName is string && data.staffName.size() >= 1 && data.staffName.size() <= 120 &&
+        data.content is string && data.content.size() >= 1 && data.content.size() <= 2000 &&
+        data.repeatCount is number && data.repeatCount >= 1 &&
+        data.history is list && data.history.size() >= 1 && data.history.size() <= 200 &&
+        data.history[0] is string &&
+        data.createdBy is string && data.createdBy.size() <= 120 &&
+        (!('isHidden' in data) || data.isHidden is bool) &&
+        (!('hiddenAt' in data) || (data.hiddenAt is string && data.hiddenAt.size() <= 64)) &&
+        (!('durationDays' in data) || data.durationDays == null || (data.durationDays is number && data.durationDays >= 0)) &&
+        (!('durationLabel' in data) || (data.durationLabel is string && data.durationLabel.size() <= 80)) &&
+        (!('expiresAt' in data) || data.expiresAt == null || (data.expiresAt is string && data.expiresAt.size() <= 64));
+    }
+
+    // 3. Admins Registry
+    match /admins/{uid} {
+      allow get: if isVerifiedUser() && (request.auth.uid == uid || isBootstrappedAdmin());
+      allow list: if isBootstrappedAdmin();
+      allow create, update, delete: if isBootstrappedAdmin() && isValidId(uid);
+    }
+
+    // 4. Clinic General Config
+    match /clinic_config/{configId} {
+      allow get: if isValidId(configId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(configId) &&
+        isValidClinicConfig(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(configId) &&
+        isValidClinicConfig(incoming()) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'clinicStartHour', 'clinicEndHour', 'weekdaySettings', 'referralSources',
+          'patientTags', 'patientRequiredFields', 'staffAlertSettings',
+          'expenseCategories', 'patientFollowUpStatuses', 'listItemColors',
+          'allowedEmails', 'updatedAt'
+        ]);
+      allow delete: if isBootstrappedAdmin() && isValidId(configId);
+    }
+
+    // 5. Staff Members (Credentials & RBAC)
+    match /staff_members/{staffId} {
+      allow get: if isValidId(staffId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(staffId) &&
+        isValidStaffMember(incoming()) &&
+        incoming().id == staffId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(staffId) &&
+        isValidStaffMember(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'username', 'password', 'email', 'recoveryPin',
+            'role', 'jobTitle', 'phone', 'branchName', 'restrictedBranchId', 'doctorId',
+            'isDisabled', 'exemptFromAttendance', 'attendanceExemptDates',
+            'defaultUnitByDay', 'shiftStartTime', 'shiftEndTime',
+            'permissions', 'allowedEmails', 'updatedAt'
+          ])
+        );
+      allow delete: if isClinicSession() && isValidId(staffId) && hasClinicResourceOwner() && staffId != 'user_shlkamy';
+    }
+
+    // 6. Doctors Roster
+    match /doctors/{doctorId} {
+      allow get: if isValidId(doctorId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(doctorId) &&
+        isValidDoctor(incoming()) &&
+        incoming().id == doctorId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(doctorId) &&
+        isValidDoctor(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'name', 'specialty', 'phone', 'color', 'isDisabled', 'allowedEmails', 'updatedAt'
+        ]);
+      allow delete: if isClinicSession() && isValidId(doctorId) && hasClinicResourceOwner();
+    }
+
+    // 7. Clinic Units
+    match /units/{unitId} {
+      allow get: if isValidId(unitId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(unitId) &&
+        isValidUnit(incoming()) &&
+        incoming().id == unitId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(unitId) &&
+        isValidUnit(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'name', 'chairCount', 'description', 'isDisabled',
+          'latitude', 'longitude', 'allowedRadiusMeters',
+          'allowedEmails', 'updatedAt'
+        ]);
+      allow delete: if isClinicSession() && isValidId(unitId) && hasClinicResourceOwner();
+    }
+
+    // 8. Procedures Catalog
+    match /procedures/{procedureId} {
+      allow get: if isValidId(procedureId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(procedureId) &&
+        isValidProcedure(incoming()) &&
+        incoming().id == procedureId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(procedureId) &&
+        isValidProcedure(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'name', 'category', 'defaultPrice', 'allowedEmails', 'updatedAt'
+        ]);
+      allow delete: if isClinicSession() && isValidId(procedureId) && hasClinicResourceOwner();
+    }
+
+    // 9. Expenses Ledger
+    match /expenses/{expenseId} {
+      allow get: if isValidId(expenseId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(expenseId) &&
+        isValidExpense(incoming()) &&
+        incoming().id == expenseId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(expenseId) &&
+        isValidExpense(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'category', 'amount', 'date', 'unitId', 'unitName', 'notes', 'loggedBy', 'allowedEmails', 'updatedAt'
+        ]);
+      allow delete: if isClinicSession() && isValidId(expenseId) && hasClinicResourceOwner();
+    }
+
+    // 10. Tasks
+    match /tasks/{taskId} {
+      allow get: if isValidId(taskId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(taskId) &&
+        isValidTask(incoming()) &&
+        incoming().id == taskId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(taskId) &&
+        isValidTask(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'title', 'description', 'dueDate', 'assignedTo', 'priority', 'recurrence',
+            'isCompleted', 'adminCompleted', 'completedAt', 'completedBy', 'completedDates',
+            'allowedEmails', 'updatedAt'
+          ])
+        );
+      allow delete: if isClinicSession() && isValidId(taskId) && hasClinicResourceOwner();
+    }
+
+    // 11. Attendance Records
+    match /attendance/{attendanceId} {
+      allow get: if isValidId(attendanceId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(attendanceId) &&
+        isValidAttendance(incoming()) &&
+        incoming().id == attendanceId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(attendanceId) &&
+        isValidAttendance(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'unitId', 'unitName', 'date', 'clockIn', 'clockOut', 'isManual', 'manualReason', 'status', 'allowedEmails', 'updatedAt'
+          ])
+        );
+      allow delete: if isClinicSession() && isValidId(attendanceId) && hasClinicResourceOwner();
+    }
+
+    // 12. Prescriptions
+    match /prescriptions/{prescriptionId} {
+      allow get: if isValidId(prescriptionId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(prescriptionId) &&
+        isValidPrescription(incoming()) &&
+        incoming().id == prescriptionId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(prescriptionId) &&
+        isValidPrescription(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'prescriptionNumber', 'patientId', 'patientName', 'patientAge', 'date',
+          'doctorId', 'doctorName', 'diagnosis', 'medications', 'notes', 'allowedEmails', 'updatedAt'
+        ]);
+      allow delete: if isClinicSession() && isValidId(prescriptionId) && hasClinicResourceOwner();
+    }
+
+    // 13. WhatsApp Templates & Alerts
+    match /whatsapp_templates/{templateId} {
+      allow get: if isValidId(templateId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(templateId) &&
+        isValidWhatsAppTemplate(incoming()) &&
+        incoming().id == templateId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(templateId) &&
+        isValidWhatsAppTemplate(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'triggerEvent', 'timingOffsetMinutes',
+          'timingDirection', 'timingValue', 'timingUnit', 'procedureId', 'procedureName',
+          'messageTemplate', 'isActive', 'allowedEmails', 'updatedAt'
+        ]);
+      allow delete: if isClinicSession() && isValidId(templateId) && hasClinicResourceOwner();
+    }
+
+    match /whatsapp_alerts/{alertId} {
+      allow get: if isValidId(alertId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(alertId) &&
+        isValidWhatsAppAlert(incoming()) &&
+        incoming().id == alertId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(alertId) &&
+        isValidWhatsAppAlert(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'sentAt', 'allowedEmails', 'updatedAt'])
+        );
+      allow delete: if isClinicSession() && isValidId(alertId) && hasClinicResourceOwner();
+    }
+
+    // 14. Sync Overlay Collections for Large Datasets (Patients, Appointments, Invoices, Payments, Operations)
+    match /patients_sync/{docId} {
+      allow get: if isValidId(docId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(docId) &&
+        isValidSyncOverlay(incoming()) &&
+        incoming().id == docId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(docId) &&
+        isValidSyncOverlay(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['isDeleted', 'payload', 'allowedEmails', 'updatedAt']);
+      allow delete: if isClinicSession() && isValidId(docId) && hasClinicResourceOwner();
+    }
+
+    match /appointments_sync/{docId} {
+      allow get: if isValidId(docId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(docId) &&
+        isValidSyncOverlay(incoming()) &&
+        incoming().id == docId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(docId) &&
+        isValidSyncOverlay(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['isDeleted', 'payload', 'allowedEmails', 'updatedAt']);
+      allow delete: if isClinicSession() && isValidId(docId) && hasClinicResourceOwner();
+    }
+
+    match /invoices_sync/{docId} {
+      allow get: if isValidId(docId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(docId) &&
+        isValidSyncOverlay(incoming()) &&
+        incoming().id == docId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(docId) &&
+        isValidSyncOverlay(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['isDeleted', 'payload', 'allowedEmails', 'updatedAt']);
+      allow delete: if isClinicSession() && isValidId(docId) && hasClinicResourceOwner();
+    }
+
+    match /payments_sync/{docId} {
+      allow get: if isValidId(docId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(docId) &&
+        isValidSyncOverlay(incoming()) &&
+        incoming().id == docId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(docId) &&
+        isValidSyncOverlay(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['isDeleted', 'payload', 'allowedEmails', 'updatedAt']);
+      allow delete: if isClinicSession() && isValidId(docId) && hasClinicResourceOwner();
+    }
+
+    match /operations_sync/{docId} {
+      allow get: if isValidId(docId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(docId) &&
+        isValidSyncOverlay(incoming()) &&
+        incoming().id == docId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(docId) &&
+        isValidSyncOverlay(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['isDeleted', 'payload', 'allowedEmails', 'updatedAt']);
+      allow delete: if isClinicSession() && isValidId(docId) && hasClinicResourceOwner();
+    }
+
+    // 15. Audit Logs
+    match /audit_logs/{logId} {
+      allow get: if isValidId(logId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(logId) &&
+        isValidAuditLog(incoming()) &&
+        incoming().id == logId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(logId) &&
+        isValidAuditLog(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['reverted', 'allowedEmails', 'updatedAt']);
+      allow delete: if isClinicSession() && isValidId(logId) && hasClinicResourceOwner();
+    }
+
+    // 16. Patient Follow-Up Status Change Logs
+    match /patient_follow_up_logs/{logId} {
+      allow get: if isValidId(logId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(logId) &&
+        isValidPatientFollowUpLog(incoming()) &&
+        incoming().id == logId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(logId) &&
+        isValidPatientFollowUpLog(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'previousStatus', 'newStatus', 'notes', 'audioDataUrl', 'audioDurationSeconds',
+          'feedbackOutcome', 'feedbackDate', 'reverted', 'revertedAt', 'revertedBy',
+          'allowedEmails', 'updatedAt'
+        ]);
+      allow delete: if isClinicSession() && isValidId(logId) && hasClinicResourceOwner();
+    }
+
+    // 17. Staff Alert History & Interaction Logs
+    match /staff_alert_logs/{logId} {
+      allow get: if isValidId(logId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(logId) &&
+        isValidStaffAlertLog(incoming()) &&
+        incoming().id == logId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(logId) &&
+        isValidStaffAlertLog(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'message', 'targetStaffIds', 'targetStaffNames', 'channel',
+          'status', 'lastUpdatedAt', 'lastInteractionBy', 'lastInteractionById',
+          'lastInteractionLabel', 'interactions', 'allowedEmails', 'updatedAt'
+        ]);
+      allow delete: if isClinicSession() && isValidId(logId) && hasClinicResourceOwner();
+    }
+
+    // 18. Staff Comments & Recurring Guidance Notes
+    match /staff_comments/{commentId} {
+      allow get: if isValidId(commentId) && canGetClinicDoc();
+      allow list: if hasClinicResourceOwner();
+      allow create: if isClinicSession() &&
+        isValidId(commentId) &&
+        isValidStaffComment(incoming()) &&
+        incoming().id == commentId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isClinicSession() &&
+        isValidId(commentId) &&
+        isValidStaffComment(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'staffId', 'staffName', 'content', 'repeatCount', 'history', 'isHidden', 'hiddenAt',
+          'durationDays', 'durationLabel', 'expiresAt', 'allowedEmails', 'updatedAt'
+        ]);
+      allow delete: if isClinicSession() && isValidId(commentId) && hasClinicResourceOwner();
+    }
+  }
+}

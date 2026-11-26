@@ -1,0 +1,2450 @@
+/* Dr Mai Kassem — Native-Grade Mobile Design System
+ * Presentation only: no changes to auth, permissions, finance or clinic data.
+ * Token-driven layer loaded AFTER the legacy pilot.css. Avoids stacking ad-hoc
+ * declarations in the legacy stylesheet. Primary QA viewports: 320–430 px.
+ */
+:root {
+ color-scheme: light;
+ --cf-header-background:#fff;
+ --cf-header-action-surface:#f0f6f5;
+ --cf-header-action-ink:#143e4c;
+ --cf-primary: #087d79;
+ --cf-primary-hover: #066662;
+ --cf-primary-soft: #e7f5f2;
+ --cf-ink: #172f3b;
+ --cf-muted: #526974;
+ --cf-muted-strong: #465e67;
+ --cf-surface: #fff;
+ --cf-surface-muted: #f5f9fa;
+ --cf-canvas: #edf3f5;
+ --cf-border: #d7e5e7;
+ --cf-focus: #087d79;
+ --cf-success: #0b7356;
+ --cf-warning: #916018;
+ --cf-danger: #b52d42;
+ --cf-shadow: 0 6px 22px rgba(18,48,60,.07);
+ --cf-radius-xs: 8px;
+ --cf-radius-sm: 12px;
+ --cf-radius: 16px;
+ --cf-radius-lg: 22px;
+ --cf-space-1: 4px;
+ --cf-space-2: 8px;
+ --cf-space-3: 12px;
+ --cf-space-4: 16px;
+ --cf-space-5: 20px;
+ --cf-space-6: 24px;
+ --cf-tap: 44px;
+ --cf-nav-height: 64px;
+ --cf-visual-height: 100dvh;
+ --cf-keyboard-offset: 0px;
+ --cf-typography-body: 14px;
+ --cf-typography-meta: 12px;
+ --cf-elevation-surface: 0 2px 12px rgba(18,48,60,.055);
+ -webkit-text-size-adjust: 100%;
+ text-size-adjust: 100%;
+}
+html {scroll-padding-top: 72px; overflow-x: clip}
+body {
+ background: var(--cf-canvas);
+ color: var(--cf-ink);
+ font-family: Cairo,"IBM Plex Sans Arabic",system-ui,sans-serif;
+ line-height: 1.6;
+ -webkit-tap-highlight-color: transparent;
+ overscroll-behavior-x: none;
+}
+button, input, select, textarea {font-family: inherit}
+button, [role="button"], summary {touch-action: manipulation}
+button {
+ transition: background-color .16s ease,border-color .16s ease,
+             color .16s ease,box-shadow .16s ease,transform .12s ease;
+}
+button:active:not(:disabled) {transform: scale(.985)}
+button:disabled {opacity:.54;cursor:not-allowed}
+:where(button,input,select,textarea,a,[role="button"],summary):focus-visible {
+ outline: 3px solid var(--cf-focus);
+ outline-offset: 3px;
+}
+:where(.container,.panel,.cardForm,.row,.metrics,.metric,.grid,
+       #workspace,#workspaceContent,.homeSection,.homeNumbers,
+       .patientHeader,.patientBrowseRow,.financeRecordRow) {min-width:0;max-width:100%}
+:where(.panel,.metric,.patientBrowseRow,.financeRecordRow) {
+ border-color:var(--cf-border);
+ box-shadow:var(--cf-shadow);
+}
+:where(.cardForm,.empty,.homeEmpty,.helpLine) {border-radius:var(--cf-radius)}
+:where(h1,h2,h3) {text-wrap:balance}
+:where(.muted,.help,.row small,.homeItem small) {color:var(--cf-muted)}
+/* Explicit semantic text contrast for mixed legacy cards. */
+.login .muted,.login .help {color:var(--cf-muted)}
+.flootHome .homeNumber .homeStatHeading span {color:var(--cf-muted-strong)}
+.flootHome .homeEmpty,#workspaceContent .empty,.calendarDayEmpty,
+.calendarHeading > span {color:var(--cf-muted-strong)}
+#workspaceContent .tag {color:#075d5b}
+:where(.row,.patientBrowseDetails,.financeRecordRow) {overflow-wrap:anywhere}
+:where(input:not([type=checkbox]):not([type=radio]),select,textarea) {
+ border-color:#bdcfd2;
+ border-radius:var(--cf-radius-sm);
+ min-height:48px;
+ font-size:16px;
+ padding-inline:12px;
+ background:var(--cf-surface);
+ color:var(--cf-ink);
+}
+:where(input,select,textarea)::placeholder {color:#687f88;opacity:1}
+:where(input,select,textarea):focus-visible {border-color:var(--cf-focus)}
+:where(button):not(.calendarMonthDay,.taskMonthDay,.attendanceMonthDay) {
+ -webkit-appearance:none;
+ appearance:none;
+}
+button.primary {
+ background:var(--cf-primary);
+ border-color:var(--cf-primary);
+ color:#fff;
+}
+button.primary:active:not(:disabled) {background:var(--cf-primary-hover)}
+button.danger {color:var(--cf-danger)}
+a {text-underline-offset:3px}
+:where(.tag,.homePill,.patientStatusBadge) {font-weight:700}
+:where(.homeNumber strong,.metric strong,.dashboardPreviewMetric strong,
+ .adminAnalyticsTile strong,[dir="ltr"],input[type="number"],input[type="tel"]) {
+ font-variant-numeric:tabular-nums;
+}
+:where(#workspaceContent) {contain:layout style}
+
+/* Compact, stable shell: keep the existing header-scroll logic intact. */
+body.signedIn .top {
+ border-bottom:1px solid rgba(255,255,255,.15);
+}
+body.signedIn .brandSignature {
+ font-family:Allura,"Brush Script MT",cursive;
+ letter-spacing:.012em;
+ white-space:nowrap;
+}
+body.signedIn #appDrawer {
+ background:var(--cf-surface);
+ border-inline-start:1px solid var(--cf-border);
+}
+body.signedIn #appDrawer .drawerHeading {border-bottom:1px solid var(--cf-border)}
+body.signedIn #appDrawer #tabs button[data-view] {
+ border-radius:var(--cf-radius-sm);
+ min-height:48px;
+}
+body.signedIn #appDrawer #tabs button[data-view].active {
+ background:var(--cf-primary-soft);
+ color:var(--cf-primary-hover);
+}
+#drawerBackdrop {touch-action:manipulation}
+#bottomNav {
+ background:rgba(255,255,255,.98);
+ border-top:1px solid var(--cf-border);
+ box-shadow:0 -5px 22px rgba(18,48,60,.06);
+}
+#bottomNav button[data-view] {
+ min-width:0;
+ border-radius:var(--cf-radius-sm);
+ transition:color .16s ease,background-color .16s ease;
+}
+#bottomNav button[data-view].active {color:var(--cf-primary-hover)}
+#bottomNav .bottomNavLabel {font-weight:700;letter-spacing:0}
+#fabButton {
+ box-shadow:0 7px 22px rgba(8,125,121,.27);
+}
+#fabMenu {
+ border:1px solid var(--cf-border);
+ box-shadow:0 12px 40px rgba(12,39,54,.16);
+}
+#fabMenu button {min-height:44px;border-radius:var(--cf-radius-sm)}
+#fabMenu button:focus-visible {outline-offset:-3px}
+
+/* Focus-aware, keyboard-aware app sheets. Use the visual viewport on iOS/Android
+ * and retain the original stacked-dialog workflow and close semantics. */
+dialog.patientRecordEditor, #globalSearchDialog {
+ max-height:min(calc(var(--cf-visual-height) - env(safe-area-inset-top) - 12px),94dvh);
+ overscroll-behavior:contain;
+ scrollbar-gutter:stable;
+}
+dialog.patientRecordEditor::backdrop,
+#globalSearchDialog::backdrop {background:rgba(11,31,40,.54)}
+dialog.patientRecordEditor .recordEditorHeading {
+ background:var(--cf-surface);
+ border-bottom:1px solid var(--cf-border);
+}
+dialog.patientRecordEditor .recordEditorHeading h2 {
+ color:var(--cf-ink);
+ line-height:1.45;
+}
+dialog.patientRecordEditor button[data-close-patient-editor],
+#globalSearchDialog button[data-global-search-close] {
+ min-width:44px;
+ min-height:44px;
+ display:inline-grid;
+ place-items:center;
+}
+dialog.patientRecordEditor form {min-width:0}
+dialog.patientRecordEditor form button[type="submit"] {min-height:48px}
+dialog.patientRecordEditor .bookingFlootFooter {
+ padding-bottom:max(12px,env(safe-area-inset-bottom));
+}
+#globalSearchDialog {border-radius:var(--cf-radius-lg)}
+#globalSearchResults button {min-height:48px}
+
+/* Thumb-sized date controls and day/week/month navigation. */
+:where(.flootHomeDayNav,.calendarToolbarGroup,.taskMonthNavigation) button {min-height:44px}
+:where(.taskModeSwitcher,.calendarModeSwitcher,.calendarToolbarGroup) button {
+ border-radius:var(--cf-radius-sm);
+}
+:where(.flootHomeAppointment,.flootHomeTask,.homeNumber,
+       .patientBrowseRow,.financeRecordRow,.taskPersonGroup) {
+ border-color:var(--cf-border);
+}
+.flootHomeDayNav {max-width:100%;white-space:nowrap}
+.flootHome .homeViewAll {min-height:44px}
+:where(.homeNumber strong,.dashboardPreviewMetric strong,.adminAnalyticsTile strong) {
+ line-height:1.3;
+}
+:where(.patientListActions,.financeRecordActions,.patientContactLinks) button {
+ min-height:44px;
+}
+:where(.patientOpenButton,.patientBack,[data-open-patient]) {
+ touch-action:manipulation;
+}
+.calendarGridScroll,.calendarWeekScroll,.adminTrendScroll {
+ -webkit-overflow-scrolling:touch;
+ overscroll-behavior-x:contain;
+}
+.calendarGridScroll.calendarWeekScroll {overscroll-behavior-y:auto}
+.calendarWeekStickyHeader,.calendarWeekFrozenHours {isolation:isolate}
+
+/* Localized financial clarity and optimistic feedback (no accounting changes). */
+:where(.financeRecordRow,.invoiceLine,.patientHeader) {border-radius:var(--cf-radius)}
+:where(.financeRecordRow,.invoiceLine,.patientHeader) small {line-height:1.55}
+:where(.financeFilterToolbar,.patientDirectoryActions,.financeCreateBar) {
+ min-width:0;
+ max-width:100%;
+}
+:where(.status,.backendHealth,.helpLine) {overflow-wrap:anywhere}
+.login {box-shadow:0 12px 40px rgba(18,48,60,.075)}
+.login form>button[type="submit"] {min-height:50px;font-size:15px}
+.login form label {font-size:14px}
+
+/* Mobile platform ergonomics and 320px resilience. */
+@media(max-width:999px) {
+ /* Minimum 16px stops iOS Safari zooming in when a form field gains focus.
+  * The original input dimensions and booking clock size remain intact. */
+ body input:not([type=checkbox]):not([type=radio]),
+ body textarea,body select {font-size:max(16px,1rem)}
+ body.signedIn .container {
+  padding-bottom:calc(var(--cf-nav-height) + env(safe-area-inset-bottom) + 25px);
+ }
+ #bottomNav {padding-bottom:max(6px,env(safe-area-inset-bottom))}
+ #bottomNav button[data-view] {min-height:54px;padding-inline:2px}
+ #bottomNav .bottomNavLabel {font-size:clamp(9px,2.65vw,11px)}
+ #bottomNav .bottomNavIcon svg {width:22px;height:22px}
+ body.signedIn .top #menuButton,
+ body.signedIn .top #globalSearch {top:max(10px,env(safe-area-inset-top))}
+ body.signedIn.headerOutOfView #menuButton,
+ body.signedIn.headerOutOfView #globalSearch {box-shadow:0 4px 16px rgba(17,48,56,.16)}
+ #fabMenu {padding:8px}
+ #appDrawer {max-width:min(88vw,355px)}
+ :where(.homeNumbers,.adminAnalyticsGrid,.dashboardPreviewGrid) {min-width:0}
+}
+@media(max-width:600px) {
+ .container {padding-inline:12px}
+ .panel {border-radius:var(--cf-radius);padding:14px}
+ .login {margin:16px auto}
+ form {grid-template-columns:minmax(0,1fr);gap:12px}
+ form>label {line-height:1.55;font-size:13px}
+ dialog.patientRecordEditor {
+  bottom:var(--cf-keyboard-offset);
+  max-width:100%;
+  width:100%;
+  max-height:calc(var(--cf-visual-height) - env(safe-area-inset-top) - 8px);
+  border-radius:22px 22px 0 0;
+ }
+ dialog.patientRecordEditor .recordEditorHeading {min-height:60px}
+ dialog.patientRecordEditor form>button[type="submit"] {min-height:48px}
+ dialog.patientRecordEditor.bookingEditor.flootBookingEditor {
+  width:100%;
+  max-width:100%;
+  max-height:calc(var(--cf-visual-height) - env(safe-area-inset-top) - 8px);
+  margin:0;
+  border-radius:22px 22px 0 0;
+  padding-inline:16px;
+ }
+ .flootBookingEditor .recordEditorHeading {margin-inline:-16px;padding-inline:16px}
+ .flootBookingEditor #newAppointment {gap:15px}
+ .flootBookingEditor .bookingFlootSummary {min-height:60px}
+ .flootBookingEditor .bookingFlootFooter {
+  position:sticky;
+  bottom:0;
+  margin-inline:-8px;
+  padding-inline:8px;
+ }
+ .flootBookingEditor .bookingPatientActions button {min-height:44px}
+ .flootBookingEditor .bookingQuickDays {gap:6px}
+ .flootBookingEditor .bookingQuickDays button {min-height:44px}
+ #globalSearchDialog {
+  bottom:var(--cf-keyboard-offset);
+  width:100%;
+  max-width:100%;
+  max-height:calc(var(--cf-visual-height) - env(safe-area-inset-top) - 8px);
+  margin:0;
+  inset:auto 0 0;
+  border-radius:22px 22px 0 0;
+  padding-bottom:max(16px,env(safe-area-inset-bottom));
+ }
+ .patientBrowseRow,.financeRecordRow {gap:10px}
+ .flootHomeDayNav {flex-wrap:nowrap}
+}
+@media(max-width:359px){
+ .container {padding-inline:8px}
+ .panel {padding:12px}
+ .homeNumbers {gap:6px}
+ .homeNumber {padding:10px}
+ .flootHomeDayNav {gap:4px}
+ .flootHomeDayNav button {min-width:40px;width:40px;min-height:44px;height:44px}
+ .flootHomeDayNav button[data-home-today],
+ .flootHomeDayNav button[data-home-task-today] {min-width:51px;padding-inline:5px}
+ #bottomNav .bottomNavLabel {font-size:9px}
+ #bottomNav button[data-view] {padding-inline:0}
+ #fabMenu {max-width:calc(100vw - 18px)}
+}
+@media(min-width:700px) {
+ .login {max-width:480px}
+ :where(.panel,.patientHeader,.invoiceLine,.metric) {border-radius:var(--cf-radius-lg)}
+}
+@media(hover:hover) and (pointer:fine) {
+ button:hover:not(:disabled) {filter:brightness(.98)}
+ .flootHomeAppointment:hover,.patientBrowseRow:hover {border-color:#abcfc9}
+}
+@media(prefers-reduced-motion:reduce){
+ html:focus-within {scroll-behavior:auto}
+ *,*::before,*::after {
+  scroll-behavior:auto;
+  animation-duration:.01ms;
+  animation-iteration-count:1;
+  transition-duration:.01ms;
+ }
+}
+
+/* Unified native touch surfaces across clinical and financial modules.
+   This layer is intentionally scoped; table/calendar cell internals keep
+   their own compact dimensions while every actionable button is tappable. */
+#workspaceContent :is(.patientListActions,.patientContactLinks,.financeRecordActions,
+ .taskEntryActions,.homeQuick,.homeSectionHead,.calendarToolbarGroup,
+ .bookingPatientActions,.bookingQuickDays) button {
+ min-height:var(--cf-tap);
+}
+#workspaceContent :is(.patientWhatsapp,.patientContactLinks a,.patientBack,
+ .homeViewAll) {min-height:var(--cf-tap);display:inline-flex;align-items:center}
+#workspaceContent :is(.homeSection,.patientBrowseRow,.taskEntry,.financeRecordRow,
+ .invoiceLine,.expenseRow) {min-width:0;overflow-wrap:anywhere}
+#workspaceContent :is(.homeSectionHead,.patientBrowseRow,.financeRecordRow) > * {min-width:0}
+#workspaceContent :is(.patientBrowseRow,.financeRecordRow,.taskEntry) {
+ border-radius:var(--cf-radius);
+ box-shadow:var(--cf-elevation-surface);
+}
+#workspaceContent :is(.homeSection,.cardForm) {border-radius:var(--cf-radius)}
+#workspaceContent :is(.calendarAppointment,.taskEntry,.patientBrowseRow,.financeRecordRow) {
+ transition:border-color .16s ease,background-color .16s ease,box-shadow .16s ease;
+}
+#workspaceContent :is(.patientStatusBadge,.homePill,.tag) {line-height:1.5}
+#workspaceContent :is(.metric strong,.homeNumber strong,.patientTotals strong) {
+ font-variant-numeric:tabular-nums;
+}
+#workspaceContent :is(.calendarMonthScroll,.calendarGridScroll,.debtPreviewScroll) {
+ max-width:100%;
+ -webkit-overflow-scrolling:touch;
+ overscroll-behavior-x:contain;
+}
+
+/* Bottom toolbar is not actionable while the software keyboard obscures it.
+   Do not remove patient form controls or hide their sticky save actions. */
+@media(max-width:999px) {
+ body.drawerOpen {overflow:hidden;overscroll-behavior:contain}
+ body.mobileKeyboardOpen #bottomNav,
+ body.mobileKeyboardOpen #fabButton,
+ body.mobileKeyboardOpen #fabMenu {
+  visibility:hidden;
+  pointer-events:none;
+ }
+ #bottomNav {padding-top:6px;padding-bottom:max(8px,env(safe-area-inset-bottom))}
+ #bottomNav button[data-view]{min-height:54px}
+ #bottomNav .bottomNavLabel{font-size:clamp(10px,2.7vw,11px);line-height:1.3}
+ #fabButton {width:56px;height:56px;touch-action:manipulation}
+ #fabMenu {max-height:min(60dvh,420px);overflow-y:auto}
+ #appDrawer {padding-bottom:calc(20px + env(safe-area-inset-bottom))}
+ .signedIn .container {padding-bottom:calc(var(--cf-nav-height) + env(safe-area-inset-bottom) + 32px)}
+}
+@media(max-width:600px) {
+ dialog.patientRecordEditor {
+  overscroll-behavior-y:contain;
+  scroll-padding-bottom:max(72px,env(safe-area-inset-bottom));
+  -webkit-overflow-scrolling:touch;
+ }
+ dialog.patientRecordEditor :is(input,select,textarea) {scroll-margin-block:80px 140px}
+ dialog.patientRecordEditor .recordEditorHeading {
+  border-radius:16px 16px 0 0;
+ }
+ dialog.patientRecordEditor :is(.bookingFlootFooter,form>button[type="submit"]) {
+  z-index:3;
+ }
+ #globalSearchDialog input {font-size:16px}
+ .login form {min-width:0}
+ .login form>button[type="submit"] {width:100%}
+}
+@media(max-width:359px) {
+ #bottomNav .bottomNavLabel {font-size:10px}
+ #workspaceContent .homeQuick button {font-size:12px;line-height:1.5}
+ #workspaceContent .homeSectionHead h2 {font-size:13px}
+}
+@media(prefers-reduced-motion:reduce){
+ #workspaceContent :is(.calendarAppointment,.taskEntry,.patientBrowseRow,.financeRecordRow){transition:none}
+}
+
+/* Dr Mai Kassem identity — balanced across Android and iOS widths. */
+body.signedIn .top .brandSignature {font-size:clamp(21px,5.7vw,29px);line-height:1.18}
+body.signedIn .top .brand small {font-size:clamp(9px,2.3vw,11px);color:#d5e5e4;line-height:1.35}
+#appDrawer .drawerHeading strong {font-family:Allura,"Brush Script MT",cursive;font-size:28px;direction:ltr}
+@media(max-width:999px){
+ .top .brandSignature {max-width:100%;overflow:hidden;text-overflow:ellipsis}
+ :where(input:not([type=checkbox]):not([type=radio]),textarea,select){font-size:max(16px,1rem)}
+ #appDrawer {max-width:min(88vw,355px)}
+}
+@media(max-width:360px){
+ .top .brandSignature{font-size:clamp(18px,5.4vw,21px)}
+ .top .brand small{font-size:9px}
+}
+
+/* PREMIUM VISUAL REDESIGN — 2026. Single consolidated presentation layer.
+   No data fetching, permissions, finance calculation or appointment business
+   rules are altered. Components are re-skinned by role and semantic selectors.
+   All color, spacing and typography decisions originate in these tokens. */
+:root {
+ --cf-primary:#087e83;
+ --cf-primary-hover:#05666b;
+ --cf-primary-soft:#e2f4f1;
+ --cf-ink:#172f3d;
+ --cf-muted:#536b79;
+ --cf-muted-strong:#345361;
+ --cf-surface:#fff;
+ --cf-surface-muted:#f4faf9;
+ --cf-canvas:#f4f7f9;
+ --cf-border:#dce7ec;
+ --cf-focus:#087e83;
+ --cf-success:#12745e;
+ --cf-warning:#8c5712;
+ --cf-danger:#b32c47;
+ --cf-radius-xs:10px;
+ --cf-radius-sm:14px;
+ --cf-radius:20px;
+ --cf-radius-lg:26px;
+ --cf-shadow:0 7px 28px rgba(20,47,59,.065);
+ --cf-shadow-raised:0 14px 48px rgba(15,45,55,.14);
+ --cf-navy:#162f3b;
+ --cf-navy-soft:#244957;
+ --cf-accent:#bce7d9;
+ --cf-quiet:#eaf3f4;
+ --cf-hairline:1px solid var(--cf-border);
+ --cf-nav-height:78px;
+}
+html {scroll-behavior:smooth;scroll-padding-top:20px}
+body {
+ background:var(--cf-canvas);
+ background-image:radial-gradient(ellipse 110vw 310px at 50% -140px,#e6f6f3 0%,transparent 90%);
+ background-attachment:fixed;
+ color:var(--cf-ink);
+ font-family:Cairo,"IBM Plex Sans Arabic",system-ui,sans-serif;
+ letter-spacing:0;
+}
+::selection {background:#bfe8dd;color:#123844}
+:where(button,a,input,select,textarea,summary):focus-visible {
+ outline:3px solid var(--cf-focus);outline-offset:3px;
+}
+:where(.panel,.metric,.row,.homeSection,.calendarPlannerIntro,
+ .calendarToolbar,.cardForm,.patientHeader,.patientBrowseRow,.financeRecordRow) {
+ min-width:0;
+}
+:where(.status,.warning,.muted,.empty,.help) {overflow-wrap:anywhere}
+.status:empty {display:none}
+button {min-height:44px;border-radius:var(--cf-radius-sm);font-weight:700;
+ transition:background-color .16s ease,border-color .16s ease,box-shadow .16s ease,transform .14s ease}
+button:active:not(:disabled) {transform:scale(.975)}
+button.primary,.primary[data-create],.calendarCreate {
+ background:var(--cf-primary);border:1px solid var(--cf-primary);
+ color:white;box-shadow:0 3px 10px rgba(8,126,131,.13);
+}
+button.primary:hover:not(:disabled),.calendarCreate:hover:not(:disabled) {background:var(--cf-primary-hover)}
+:where(.patientBack,.patientLink,.homeViewAll) {
+ color:var(--cf-primary-hover);font-weight:800;text-decoration:none;
+}
+input:not([type=checkbox]):not([type=radio]),textarea,select {
+ min-height:49px;border-radius:var(--cf-radius-sm);
+ border:1px solid #c9d9de;box-shadow:0 1px 2px rgba(10,34,48,.025);
+ background:#fff;color:var(--cf-ink);font-size:16px;
+}
+input::placeholder,textarea::placeholder {color:#627b88;opacity:1}
+form>label,.cardForm label {color:#2f515d;line-height:1.7;font-size:13px}
+form {gap:14px}
+form button[type=submit] {min-height:50px}
+:where(.tag,.patientStatusBadge,.taskEntryStatus,.homePill) {
+ border-radius:999px;font-size:11px;line-height:1.55;padding:5px 10px;
+}
+.status[data-type="success"],.status[data-type="error"] {
+ border-radius:12px;padding:9px 12px;margin:7px 0;
+ background:#e7f6ef;color:var(--cf-success);font-weight:700;
+}
+.status[data-type="error"] {background:#fff0f2;color:var(--cf-danger)}
+.warning {background:#fffbef;border-color:#eee1b5;border-radius:16px;padding:11px 15px;font-size:11px}
+.empty,.homeEmpty {background:#f8fbfc;border:1px dashed #c8dde1;color:#476575;
+ border-radius:18px;padding:26px 14px;font-size:12px;line-height:1.8}
+.helpLine {border-radius:16px}
+
+/* APP HEADER / BRAND — clean light navigation, not a marketing landing page */
+.top {
+ background:rgba(255,255,255,.97);
+ color:var(--cf-navy);
+ border-bottom:var(--cf-hairline);
+ box-shadow:0 2px 15px rgba(25,51,61,.035);
+ backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+ min-height:72px;
+}
+body.signedIn .top {border-bottom:var(--cf-hairline)}
+.top .brand {min-width:0;gap:8px}
+.top .brandSignature {
+ color:var(--cf-navy);font-size:clamp(24px,6.1vw,32px);
+ line-height:1.2;letter-spacing:.004em;
+ text-shadow:none;
+}
+.top .brandDentalLogo {
+ color:var(--cf-primary);background:#e8f5f1;
+ border:1px solid #cce9e1;border-radius:13px;
+ box-shadow:inset 0 1px 0 #fff;
+}
+.top .brandDentalLogo svg {width:27px;height:27px}
+.top button,.signedIn .top button {
+ color:var(--cf-navy);background:#f0f6f5;
+ border:1px solid #e0ebec;box-shadow:none;
+ width:44px;height:44px;border-radius:15px;
+}
+.top button:active:not(:disabled) {background:#deefea}
+#appActions {gap:5px}
+#who {max-width:110px;color:#587480;font-size:11px;text-align:start}
+.signedIn #who {font-weight:700}
+body.signedIn.headerOutOfView .top #menuButton,
+body.signedIn.headerOutOfView .top #globalSearch:not([hidden]) {
+ color:var(--cf-navy);background:rgba(255,255,255,.98);
+ border:1px solid #cfe1e3;box-shadow:0 7px 25px rgba(15,47,56,.16);
+ border-radius:15px;
+}
+
+/* APPLICATION CANVAS: the workspace itself is not one giant desktop card. */
+.container {width:100%;max-width:1170px;padding:18px clamp(12px,3.2vw,26px)}
+#workspace>.panel {
+ background:transparent;border:none;border-radius:0;
+ box-shadow:none;padding:0;margin:0;
+}
+#workspace>.panel>.sectionHead {
+ margin:4px 0 17px;padding:0 3px 13px;
+ border-bottom:1px solid #e1e9ec;
+ min-height:47px;align-items:center;
+}
+#workspace>.panel>.sectionHead h1 {
+ color:var(--cf-navy);font-weight:800;
+ font-size:clamp(21px,5.1vw,28px);
+ line-height:1.4;margin:0;letter-spacing:-.01em;
+}
+#workspaceContent {min-width:0}
+#workspaceContent>.controls,#workspaceContent>.patientDirectoryActions,
+#workspaceContent>.financeCreateBar {margin-bottom:17px}
+#workspaceContent :is(h2,h3) {color:var(--cf-navy);line-height:1.5}
+#workspaceContent :is(.patientBrowseRow,.financeRecordRow,.row,.taskEntry) {
+ background:#fff;border:1px solid var(--cf-border);
+ border-radius:var(--cf-radius);
+ box-shadow:var(--cf-shadow);
+}
+#workspaceContent .row {padding:14px}
+#workspaceContent>.cardForm,#workspaceContent>.metrics+.cardForm {
+ background:white;border:var(--cf-hairline);
+ border-radius:var(--cf-radius-lg);padding:18px;
+ box-shadow:var(--cf-shadow);
+}
+#workspaceContent :is(.metric,.dashboardPreviewMetric,.adminAnalyticsTile) {
+ background:#fff;border:var(--cf-hairline);
+ border-radius:var(--cf-radius);box-shadow:var(--cf-shadow);
+}
+
+/* THE DAILY COMMAND CENTER: intentionally distinct from the old dashboard. */
+.flootHome {display:grid;gap:16px}
+.premiumHero {
+ position:relative;isolation:isolate;overflow:hidden;
+ background:linear-gradient(131deg,#193b48 5%,#0e3841 62%,#126461 130%);
+ color:white;padding:clamp(18px,4.8vw,28px);
+ border:1px solid #235865;border-radius:28px;
+ box-shadow:0 16px 38px rgba(20,61,74,.16);
+ display:grid;gap:16px;
+}
+.premiumHero::before,.premiumHero::after {
+ content:"";position:absolute;z-index:-1;pointer-events:none;border-radius:50%;
+}
+.premiumHero::before {
+ width:220px;height:220px;left:-85px;bottom:-160px;
+ border:34px solid rgba(159,225,212,.09);
+}
+.premiumHero::after {
+ width:180px;height:180px;right:-105px;top:-115px;
+ background:radial-gradient(circle,rgba(177,237,218,.17),transparent 70%);
+}
+.premiumHeroHeading,.premiumHeroBody,.premiumHeroStats {
+ display:flex;align-items:center;justify-content:space-between;gap:12px;
+}
+.premiumHeroEyebrow {font-size:12px;color:#b9e9dd;font-weight:800;
+ display:inline-flex;align-items:center;gap:7px}
+.premiumHeroEyebrow .uiMark {width:16px;height:16px;color:#b9e9dd}
+.premiumHeroDate {font-size:11px;line-height:1.5;color:#d5eeea;
+ background:#ffffff19;border:1px solid #ffffff2b;border-radius:999px;padding:5px 10px}
+.premiumHeroBody h2 {color:white!important;font-size:clamp(21px,5.3vw,30px);
+ margin:0 0 5px;font-weight:800}
+.premiumHeroBody p {color:#d6eae9;font-size:12px;line-height:1.9;margin:0;max-width:340px}
+.premiumHeroAction {
+ flex:none;display:inline-flex;justify-content:center;align-items:center;gap:7px;
+ border:1px solid #c8eae0;background:#bdeade;color:#153d42;
+ border-radius:15px;font-size:12px;font-weight:800;padding:11px 12px;
+ box-shadow:0 7px 18px #071f2320;
+}
+.premiumHeroAction .uiMark {width:17px;height:17px}
+.premiumHeroStats {justify-content:flex-start;gap:8px;flex-wrap:wrap}
+.premiumHeroStats span {
+ display:flex;align-items:center;gap:7px;min-height:35px;padding:7px 12px;
+ background:#ffffff12;border:1px solid #ffffff22;
+ border-radius:12px;color:#e5f2f0;font-size:11px;
+}
+.premiumHeroStats svg{width:15px;height:15px;color:#b8e9dd}
+.premiumHeroStats strong{font-size:15px;color:white;font-variant-numeric:tabular-nums}
+.flootHome .homeNumbers {
+ display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+ gap:11px;margin:0;
+}
+.flootHome .homeNumber {
+ position:relative;overflow:hidden;min-width:0;min-height:111px;
+ display:flex;flex-direction:column;justify-content:space-between;
+ background:#fff;border:1px solid #e2eaee;
+ border-radius:21px;padding:16px;
+ box-shadow:var(--cf-shadow);
+}
+.flootHome .homeNumber::before {
+ content:"";position:absolute;top:0;right:0;width:5px;height:100%;
+ background:linear-gradient(#13a19c,#99ded3);opacity:.9;
+}
+.flootHome .homeNumber:nth-child(2n)::before {
+ background:linear-gradient(#efb95b,#f1dbc0);
+}
+.flootHome .homeNumber .homeStatHeading {
+ display:flex;align-items:center;gap:9px;
+}
+.flootHome .homeNumber .homeStatHeading .uiMark {
+ width:32px;height:32px;padding:7px;border-radius:12px;
+ background:#e6f6f2;color:#087872;
+}
+.flootHome .homeNumber:nth-child(2n) .homeStatHeading .uiMark {
+ background:#fff5e9;color:#ad772e;
+}
+.flootHome .homeNumber .homeStatHeading span {
+ font-size:11px;color:#57717d;font-weight:800;
+}
+.flootHome .homeNumber strong {font-size:clamp(26px,7.3vw,37px);
+ color:var(--cf-navy);font-weight:800;line-height:1.1;margin-top:7px}
+.flootHome .homeNumberOverdue {grid-column:auto}
+.flootHome .homeNumber.isAttention strong {color:#a16d28}
+.flootHome .homeSection {
+ background:#fff;border:1px solid #e1eaed;border-radius:24px;
+ box-shadow:var(--cf-shadow);padding:17px 15px 18px;margin:0;min-width:0;
+}
+.flootHome .homeSectionHead {align-items:center;gap:12px;
+ padding-bottom:13px;margin-bottom:5px;border-bottom:1px solid #edf1f3}
+.flootHome .homeSectionHead h2 {color:var(--cf-navy);
+ font-size:clamp(15px,4vw,19px);font-weight:800;margin:0;line-height:1.5}
+.flootHome .homeSectionHead h2 .uiSectionMark {
+ width:35px;height:35px;border:0;background:#e7f5f1;
+ border-radius:12px;color:#087a76;
+}
+.flootHome .flootHomeDayNav {gap:5px}
+.flootHome .flootHomeDayNav button {
+ background:#f2f7f7;color:#274e5c;border-color:#e1ecec;
+ border-radius:12px;min-height:44px;font-size:13px;box-shadow:none;
+}
+.flootHome .flootHomeDayNav [data-home-today],
+.flootHome .flootHomeDayNav [data-home-task-today] {
+ color:#006c69;background:#e2f4ee;font-weight:800;
+}
+.flootHome .homeStrip {scroll-padding-inline:8px;scrollbar-width:none}
+.flootHome .homeStrip::-webkit-scrollbar {display:none}
+.flootHome .homeStrip>:is(.calendarAppointment,.taskEntry) {
+ background:linear-gradient(145deg,#fff,#fafdfe);
+ border:1px solid #dce9e9;border-radius:19px;
+ box-shadow:0 3px 9px rgba(25,61,76,.06);
+ min-height:120px;padding:15px;
+}
+.flootHome .homeAppointmentStrip .calendarAppointment {
+ border-inline-start:4px solid #1a9692;
+}
+.flootHome .homeTaskStrip .taskEntry {border-inline-start:4px solid #c28e40}
+.flootHome .homeEmpty {
+ background:#f7fbfb;border:1px dashed #d6e6e5;
+ color:#405965;padding:22px 12px;border-radius:17px;
+}
+.flootHome .homeQuick {
+ display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;
+}
+.flootHome .homeQuick button {
+ display:flex;align-items:center;justify-content:space-between;gap:8px;
+ min-height:64px;padding:13px 12px;
+ background:#f5faf9;border:1px solid #e0edeb;border-radius:16px;
+ text-align:start;color:#294e58;box-shadow:none;font-weight:800;font-size:12px;
+}
+.flootHome .homeQuick button .uiMark {
+ width:22px;height:22px;color:#087d79;
+}
+.flootHome .homeQuickArrow {color:#5d8f8d}
+
+/* Calendar: readable segmented day/week/month and anchored scheduling grid. */
+.calendarPlannerIntro {
+ display:flex;gap:14px;align-items:center;justify-content:space-between;
+ background:linear-gradient(105deg,#f2fbf9,#e7f4f1);
+ border:1px solid #cfe5e0;border-radius:22px;padding:18px;margin:0 0 14px;
+}
+.calendarPlannerIntro h2 {font-size:19px!important;margin:0!important}
+.calendarPlannerIntro p {color:#52747d;font-size:11px;line-height:1.7;margin:6px 0 0}
+.calendarPlannerIntro .calendarCreate {flex:none;min-height:46px;
+ padding:11px 14px;border-radius:14px;font-weight:800;font-size:12px}
+.calendarToolbar {background:white;border:var(--cf-hairline);
+ box-shadow:var(--cf-shadow);border-radius:22px;padding:12px;
+ display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.calendarToolbar .calendarModes {
+ display:flex;flex:1 1 auto;gap:3px;padding:4px;
+ background:#edf4f4;border:1px solid #e2ebec;
+ border-radius:15px;align-items:stretch;
+}
+.calendarToolbar .calendarModes button {
+ flex:1 1 0;min-width:0;min-height:44px;
+ background:transparent;border:0;border-radius:11px;
+ font-size:13px;font-weight:800;box-shadow:none;color:#59727d;
+}
+.calendarToolbar .calendarModes button.selected {
+ background:white;color:#067571;
+ box-shadow:0 2px 10px rgba(18,56,68,.1);
+}
+.calendarToolbarGroup {gap:8px}
+.calendarToolbarGroup button {
+ min-height:44px;min-width:44px;border-radius:12px;
+ background:#f6faf9;border-color:#e2ecee;
+}
+.calendarFilterBox {background:#fff;border:var(--cf-hairline);
+ border-radius:17px;margin:12px 0;box-shadow:0 2px 12px rgba(14,46,60,.045)}
+.calendarFilterBox summary {padding:13px 15px;color:#335663;font-size:12px;font-weight:800;min-height:44px}
+.calendarFilterInner {padding:0 14px 14px;gap:10px}
+.calendarHeading {display:flex;align-items:center;justify-content:space-between;gap:12px;
+ background:transparent;margin:19px 0 10px;padding:0 2px}
+.calendarHeading h2 {font-size:18px;color:var(--cf-navy)}
+.calendarHeading>span {font-size:11px;color:#506e7a;font-weight:700}
+.calendarGridScroll,.calendarWeekScroll {
+ border:1px solid #dfebeb;border-radius:16px;background:white;
+ -webkit-overflow-scrolling:touch;
+}
+.calendarAppointment,.calendarWeekEvent {border-radius:12px}
+.calendarMonthGrid {border-radius:15px;gap:3px}
+.calendarMonthDay {
+ border-radius:9px;transition:background .14s ease,border-color .14s ease;
+}
+.calendarMonthDay.isSelected,.calendarMonthDay.isToday {border-color:var(--cf-primary)}
+.calendarMonthDay.isSelected {background:#e5f5f0}
+.calendarWeekFrozenHours {background:#e6f4f0}
+.calendarWeekStickyHeader {background:#edf7f4}
+.calendarDayEmpty {min-height:90px;border-radius:17px}
+
+/* Patient directory, profile and clinical timeline: identity first. */
+#workspaceContent .patientDirectoryActions {display:flex;justify-content:flex-start}
+#workspaceContent .patientDirectoryCreate,
+#workspaceContent .patientFilterToggle {min-height:46px;border-radius:14px}
+#workspaceContent #patientSearch {
+ background:white;padding:7px;border:var(--cf-hairline);
+ border-radius:18px;box-shadow:var(--cf-shadow);
+}
+#workspaceContent #patientSearch input {
+ border:0;box-shadow:none;background:transparent;max-width:none;
+}
+#workspaceContent #patientSearch button {border-radius:13px}
+#workspaceContent .patientBrowseRow {
+ background:white;position:relative;overflow:hidden;
+ border:1px solid #e0e9ed;border-radius:20px;
+ box-shadow:var(--cf-shadow);padding:16px;
+}
+#workspaceContent .patientBrowseRow::before {
+ content:"";position:absolute;right:0;top:14px;bottom:14px;
+ width:3px;border-radius:3px;background:#a1dcd2;
+}
+#workspaceContent .patientBrowseRow :is(strong,.patientOpenButton,.patientLink) {
+ color:#1c3b49;font-weight:800;
+}
+#workspaceContent .patientListActions {
+ gap:7px;display:flex;flex-wrap:wrap;
+}
+#workspaceContent .patientListActions button {min-height:44px;border-radius:12px}
+#workspaceContent .patientHeader {
+ background:linear-gradient(120deg,#f5fbfa,#fff);
+ border:1px solid #d6e8e5;box-shadow:var(--cf-shadow);
+ border-radius:24px;padding:20px;margin:2px 0 17px;
+}
+#workspaceContent .patientHeader h2 {font-size:clamp(20px,5.5vw,27px)}
+#workspaceContent .patientContactLinks {
+ display:flex;gap:8px;flex-wrap:wrap;
+}
+#workspaceContent .patientContactLinks a {
+ display:inline-flex;align-items:center;min-height:44px;
+ padding:10px 13px;border-radius:13px;font-size:12px;font-weight:800;
+}
+#workspaceContent .patientCall {background:#086f70;color:white}
+#workspaceContent .patientWhatsapp {background:#effaf4;color:#10684c;border-color:#cce7db}
+#workspaceContent .patientAdvancedFilters {
+ background:white;border:var(--cf-hairline);border-radius:22px;
+ padding:16px;margin:10px 0 17px;box-shadow:var(--cf-shadow);
+}
+#workspaceContent .patientFilterGroup {min-width:0}
+#workspaceContent .patientHistoryHidden {border-radius:16px;padding:18px}
+#workspaceContent :is(.patientHistoryRow,.patientTimelineItem) {
+ border-radius:16px;border-color:var(--cf-border);
+}
+
+/* Finance: amounts read like native banking surfaces, not log text. */
+#workspaceContent .financeCreateBar {
+ display:flex;align-items:center;justify-content:space-between;gap:12px;
+ flex-wrap:wrap;background:#ecf7f4;border:1px solid #d3e8e0;
+ border-radius:18px;padding:13px;margin:12px 0 20px;
+}
+#workspaceContent .financeCreateBar span {font-size:11px;color:#56777c}
+#workspaceContent .financeRecordRow {
+ border:1px solid #dce8e9;border-radius:21px;
+ padding:16px;gap:14px;background:white;
+ box-shadow:var(--cf-shadow);
+}
+#workspaceContent .financeRecordIdentity {
+ display:grid;gap:7px;min-width:0;
+}
+#workspaceContent .financeProcedure {color:#193946;font-weight:800;font-size:14px;line-height:1.7}
+#workspaceContent .financeRecordMeta {font-size:11px;color:#526b75;line-height:1.9}
+#workspaceContent .financeRecordActions {display:flex;flex-wrap:wrap;gap:7px}
+#workspaceContent .financeRecordActions button {
+ min-height:44px;border-radius:12px;font-size:12px;
+}
+#workspaceContent .financeRecordActions button.primary {box-shadow:none}
+#workspaceContent .expensePeriodSummary,
+#workspaceContent .financialStatement,
+#workspaceContent .financeSummary {
+ background:linear-gradient(135deg,#f0f9f7,#fff);
+ border:1px solid #d2e6e1;border-radius:23px;
+ box-shadow:var(--cf-shadow);padding:17px;
+}
+#workspaceContent :is(.expensePeriodMetrics>div,.metric) {
+ border-radius:17px;background:white;
+}
+#workspaceContent :is(.metric strong,.expensePeriodMetrics strong) {
+ font-variant-numeric:tabular-nums;color:#164550;
+}
+#workspaceContent :is(.financeFilterToolbar,#financeRangeFilters) {
+ background:white;border-radius:18px;
+}
+#workspaceContent :is(.financeFilterToolbar,.financeCreateBar) > *{min-width:0}
+
+/* Tasks, attendance and analytics use the same component geometry. */
+#workspaceContent :is(.taskEntry,.taskPersonGroup,.taskMonthPanel,.taskOverview .taskMetric,
+ .attendanceMonthCard,.attendanceSelfSummary,.attendanceSelfMetric,
+ .adminAnalyticsTile,.adminSettingsSection) {
+ border-radius:21px;border-color:#dfe9ed;
+ box-shadow:var(--cf-shadow);
+}
+#workspaceContent .taskEntry {background:white;padding:15px}
+#workspaceContent .taskEntryActions button {border-radius:12px;min-height:44px}
+#workspaceContent :is(.taskEntryStatus,.taskNotice) {
+ font-size:11px;line-height:1.6;
+}
+#workspaceContent :is(.taskMonthDay.selected,.attendanceMonthDay.selected) {
+ background:#e0f3ee;border-color:#087e83;color:#066c6c;
+}
+#workspaceContent :is(.taskOverview,.attendanceSelfMetrics,.adminAnalyticsGrid) {
+ gap:11px;
+}
+
+/* Mobile menus — tactile bottom dock, readable drawer and focused sheets. */
+#bottomNav {
+ position:fixed;bottom:0;inset-inline:0;
+ background:rgba(255,255,255,.985);border-top:1px solid #dce8e9;
+ box-shadow:0 -7px 28px rgba(24,54,62,.1);
+ backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+ padding-top:8px;padding-bottom:max(8px,env(safe-area-inset-bottom));
+}
+#bottomNav button[data-view] {
+ color:#617886;border-radius:13px;gap:4px;
+}
+#bottomNav button[data-view].active,
+#bottomNav button[data-view][aria-current="page"] {
+ background:#e8f5f0;border:1px solid #d0ebe0;color:#066e6a;
+}
+#bottomNav .bottomNavIcon {height:27px;width:36px;border-radius:10px}
+#bottomNav .bottomNavLabel {font-size:11px;font-weight:800}
+#fabButton {
+ width:60px;height:60px;left:calc(50% - 30px);
+ bottom:calc(31px + env(safe-area-inset-bottom));
+ border:5px solid var(--cf-canvas);
+ background:linear-gradient(155deg,#098b87,#056d70);
+ color:white;box-shadow:0 10px 26px rgba(6,99,107,.26);
+}
+#fabButton svg {width:24px;height:24px}
+#fabButton[aria-expanded="true"] svg {transform:rotate(45deg)}
+#fabMenu {
+ bottom:calc(108px + env(safe-area-inset-bottom));
+ border-radius:22px;padding:10px;
+ background:rgba(255,255,255,.98);
+ box-shadow:var(--cf-shadow-raised);border:1px solid #dce8e8;
+ backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+}
+#fabMenu button {
+ background:#f6faf9;border:1px solid #edf2f3;
+ padding:10px 13px;border-radius:14px;min-height:48px;
+ color:#254852;font-size:12px;text-align:start;
+}
+#fabMenu button svg {color:#087c7a}
+#appDrawer {
+ background:#fff;color:var(--cf-ink);
+ border-left:1px solid #dae6e8;
+ box-shadow:-8px 0 48px rgba(14,40,52,.16);
+ padding:19px 14px 25px;
+}
+#appDrawer .drawerHeading {
+ margin:0 0 14px;padding:0 3px 19px;border-bottom:var(--cf-hairline);
+ color:var(--cf-navy);
+}
+#appDrawer .drawerHeading strong {font-size:27px}
+#appDrawer #tabs {gap:5px}
+#appDrawer #tabs button {
+ padding:12px 14px;border-radius:15px;
+ min-height:48px;color:#345764;text-align:start;
+ font-weight:700;font-size:13px;
+}
+#appDrawer #tabs button svg {color:#6a8790}
+#appDrawer #tabs button.active {
+ background:#e9f6f2;color:#076d6c;
+}
+#appDrawer #tabs button.active svg {color:#087c79}
+#appDrawer #logout {margin-block-start:13px;color:#a2384c;background:#fff4f5}
+#drawerBackdrop {background:rgba(12,34,45,.48);backdrop-filter:blur(3px)}
+dialog.patientRecordEditor,#globalSearchDialog {
+ background:white;color:var(--cf-ink);
+ border:1px solid #d4e4e6;border-radius:25px;
+ box-shadow:0 24px 65px rgba(18,50,61,.23);
+}
+dialog.patientRecordEditor::backdrop,#globalSearchDialog::backdrop {
+ background:rgba(13,34,45,.58);backdrop-filter:blur(4px);
+}
+dialog.patientRecordEditor .recordEditorHeading {
+ background:rgba(255,255,255,.98);border-bottom:1px solid #e1eaec;
+ border-radius:16px 16px 0 0;margin-bottom:13px;
+}
+dialog.patientRecordEditor .recordEditorHeading h2 {
+ font-size:17px;font-weight:800;color:var(--cf-navy);
+}
+dialog.patientRecordEditor form button[type=submit] {
+ background:var(--cf-primary);color:#fff;
+ border-color:var(--cf-primary);border-radius:14px;min-height:52px;
+}
+#globalSearchDialog .globalSearchHeader {color:var(--cf-navy)}
+#globalSearchDialog #globalSearchResults {gap:12px}
+
+/* Low width: redesign the hierarchy, not the font scale. */
+@media(max-width:999px) {
+ .container {padding-inline:14px}
+ body.signedIn .container {padding-bottom:calc(110px + env(safe-area-inset-bottom))}
+ body.signedIn .top {min-height:67px}
+ #bottomNav button[data-view] {min-height:55px;padding-inline:3px}
+ #bottomNav .bottomNavLabel {font-size:clamp(10px,2.7vw,11px)}
+ .premiumHero {border-radius:24px}
+ #workspaceContent>.controls {gap:10px}
+ body.mobileKeyboardOpen #bottomNav,body.mobileKeyboardOpen #fabButton,
+ body.mobileKeyboardOpen #fabMenu {visibility:hidden;pointer-events:none}
+}
+@media(max-width:600px) {
+ .container {padding-inline:12px;padding-top:15px}
+ #workspace>.panel>.sectionHead {margin-bottom:13px}
+ .premiumHero {padding:20px 17px;gap:15px}
+ .premiumHeroBody {align-items:flex-start}
+ .premiumHeroAction {align-self:flex-end}
+ .flootHome {gap:13px}
+ .flootHome .homeSection {padding:14px 12px 15px}
+ .flootHome .homeNumber {padding:13px;min-height:104px}
+ .calendarPlannerIntro {padding:14px;gap:10px}
+ .calendarPlannerIntro .calendarCreate {flex:0 0 auto;max-width:none}
+ .calendarToolbar {padding:10px}
+ .calendarToolbar .calendarModes {width:100%;flex-basis:100%}
+ .calendarToolbarGroup {flex:1;justify-content:center}
+ .calendarToolbarGroup label {font-size:12px}
+ #workspaceContent .financeRecordActions {width:100%}
+ dialog.patientRecordEditor, #globalSearchDialog {
+  border-radius:25px 25px 0 0;
+  padding-bottom:max(16px,env(safe-area-inset-bottom));
+ }
+}
+@media(max-width:380px) {
+ .premiumHeroHeading {align-items:flex-start;gap:8px;flex-wrap:wrap}
+ .premiumHeroBody {flex-direction:column;align-items:stretch;gap:13px}
+ .premiumHeroAction {align-self:flex-start}
+ .premiumHero h2 {font-size:22px}
+ .flootHome .homeNumbers {gap:8px}
+ .flootHome .homeNumber {padding:12px;min-height:108px}
+ .flootHome .homeNumber .homeStatHeading {gap:6px}
+ .flootHome .homeNumber .homeStatHeading span {font-size:11px}
+ .flootHome .homeQuick button {font-size:12px;padding:12px 10px}
+ #bottomNav .bottomNavLabel {font-size:10px}
+ .calendarPlannerIntro {flex-wrap:wrap}
+ .calendarPlannerIntro .calendarCreate {flex:1 1 100%}
+}
+@media(max-width:359px) {
+ .container {padding-inline:9px}
+ .premiumHero {padding:16px 14px}
+ .flootHome .homeSection {padding:12px 10px}
+ .flootHome .homeNumber strong {font-size:28px}
+ #bottomNav {padding-inline:1px}
+ #bottomNav button[data-view] {padding-inline:0}
+ #bottomNav .bottomNavLabel {font-size:10px}
+}
+@media(min-width:700px) {
+ .flootHome .homeNumbers {grid-template-columns:repeat(4,minmax(0,1fr))}
+ .flootHome .homeSection {padding:22px}
+ .premiumHero {padding:28px}
+ .premiumHeroBody h2 {font-size:30px}
+}
+@media(min-width:1000px) {
+ .container {padding-top:26px}
+ #appDrawer {background:#fff;box-shadow:none;border-inline-start:0;border-inline-end:1px solid var(--cf-border)}
+ #fabButton {bottom:28px}
+ #fabMenu {bottom:104px}
+}
+@media(prefers-reduced-motion:reduce) {
+ html {scroll-behavior:auto}
+ button,.calendarMonthDay,.premiumHeroAction {transition:none}
+}
+
+/* Native content hierarchy shared by every app section */
+#workspace>.panel>.sectionHead .screenTitleBlock {display:grid;gap:3px;min-width:0}
+#workspace>.panel>.sectionHead .screenSubtitle {
+ color:#5e7783;font-size:12px;line-height:1.6;font-weight:600;margin:0;
+}
+#workspace>.panel>.sectionHead h1 {margin:0}
+.login {
+ border:1px solid #dbe6e6;background:#fff;
+ border-radius:26px;box-shadow:0 20px 55px rgba(16,51,63,.095);
+ padding:clamp(19px,4vw,32px);
+}
+.login h1 {color:#183643;font-size:23px;line-height:1.45;margin-bottom:6px}
+.login .loginModes {background:#edf5f4;padding:5px;gap:5px;border-radius:16px}
+.login .loginModes button {flex:1;border:0;border-radius:12px;color:#536f7a;background:transparent;min-height:46px}
+.login .loginModes [aria-pressed=true] {
+ background:white;color:#076e70;box-shadow:0 2px 12px rgba(15,54,62,.085);
+}
+.login form>button[type=submit] {font-size:15px;min-height:53px;letter-spacing:.01em}
+.login .help {padding-top:14px;border-top:1px solid #e7eeee}
+@media(max-width:600px){
+ .login {margin-top:20px;border-radius:24px;padding:19px 17px}
+ .login h1 {font-size:21px}
+ #workspace>.panel>.sectionHead .screenSubtitle {font-size:12px}
+}
+
+
+/* Reassuring, recoverable network-error state rather than a dead-end message. */
+#workspaceContent .loadFailure {
+ display:flex;flex-direction:column;align-items:center;justify-content:center;
+ text-align:center;gap:11px;min-height:245px;
+ padding:26px 18px;background:#fff;border:1px solid #dfebed;
+ border-radius:22px;box-shadow:var(--cf-shadow);
+}
+#workspaceContent .loadFailureIcon {
+ display:grid;place-items:center;width:47px;height:47px;border-radius:15px;
+ background:#fff1e8;color:#8b431c;font-size:24px;font-weight:800;
+}
+#workspaceContent .loadFailure h2 {
+ margin:2px 0 0;font-size:19px;color:var(--cf-navy);line-height:1.45;
+}
+#workspaceContent .loadFailure p {
+ margin:0;max-width:34rem;color:#526c78;line-height:1.8;
+ overflow-wrap:anywhere;
+}
+#workspaceContent .loadFailure button {
+ min-height:48px;min-width:145px;margin-top:5px;border-radius:13px;
+}
+
+/* =====================================================================
+   DR MAI — MOBILE DESIGN COMPLETION / V3
+   Cohesive clinic application UI. Presentation-only: API and accounting
+   remain entirely untouched. No fixed data, demo records or fake actions.
+   ===================================================================== */
+:root {
+ --mai-line:1px solid #e0e9ed;
+ --mai-page-width:1120px;
+ --mai-white:#fff;
+ --mai-aqua:#e6f5f1;
+ --mai-muted:#536e7a;
+ --mai-good:#0b7558;
+ --mai-error:#ad334b;
+ --mai-warm:#a05e16;
+ --mai-elevated:0 9px 28px rgba(23,57,68,.075);
+ --mai-card-radius:21px;
+ --mai-action-radius:13px;
+}
+body {background-color:#f4f7f8}
+body.signedIn .container {
+ max-width:var(--mai-page-width);
+ margin-inline:auto;
+ min-height:calc(100dvh - 82px);
+}
+body.signedIn #workspaceContent {display:flow-root}
+body.signedIn #workspaceContent > :first-child {margin-block-start:0}
+body.signedIn #workspace>.panel>.sectionHead {
+ position:relative;padding-bottom:14px;margin-bottom:18px;
+}
+body.signedIn #workspace>.panel>.sectionHead::after {
+ content:"";position:absolute;inset-inline-start:3px;bottom:-1px;
+ width:38px;height:3px;border-radius:999px;background:var(--cf-primary);
+}
+#workspace>.panel>.sectionHead #sectionTitle {
+ font-size:clamp(21px,4.85vw,26px);
+ font-weight:800;letter-spacing:0;
+}
+#workspace>.panel>.sectionHead .screenSubtitle {
+ font-size:13px;line-height:1.65;color:var(--mai-muted);
+}
+/* The preview safety warning stays visible but does not overpower the app. */
+body.signedIn .warning {
+ border:1px solid #e9dfb9;border-inline-start:4px solid #aa7823;
+ background:#fffaf0;color:#6c4b1f;border-radius:15px;
+ font-size:12px;line-height:1.8;padding:9px 13px;
+ margin-block:3px 13px;box-shadow:none;
+}
+#status:not(:empty) {
+ border-radius:13px;font-size:12px;line-height:1.7;
+ padding:9px 13px;margin-block:9px;
+}
+#status[data-type=error] {border:1px solid #f1cbd3;color:#8f2940;background:#fff4f6}
+#status[data-type=success] {border:1px solid #b9dfd1;color:#0b654f;background:#eef9f4}
+#status:not([data-type=error]):not([data-type=success]) {color:#345e70;background:#edf6fa;border:1px solid #d6e7ee}
+
+/* A real mobile navigation surface, with gestures and safe-area clearance. */
+#bottomNav {border-radius:19px 19px 0 0}
+#bottomNav button[data-view] {
+ border:1px solid transparent;transition:background .18s,color .18s;
+}
+#bottomNav button[data-view] .bottomNavIcon {
+ display:grid;place-items:center;flex-shrink:0;
+}
+#bottomNav button[data-view].active .bottomNavIcon svg,
+#bottomNav button[data-view][aria-current=page] .bottomNavIcon svg {
+ stroke-width:2.15;
+}
+#bottomNav button[data-view]:focus-visible {outline-offset:-2px}
+#fabButton {border-radius:50%;box-shadow:0 11px 28px rgba(5,110,113,.29)}
+#fabMenu {max-width:calc(100vw - 24px)}
+#fabMenu button {display:flex;align-items:center;gap:11px;width:100%;
+ font-size:13px;font-weight:800;line-height:1.5}
+#fabMenu button svg {flex:none}
+#fabMenu button+button {margin-block-start:5px}
+#appDrawer .drawerHeading {min-height:65px}
+#appDrawer .drawerHeading button {width:44px;min-width:44px;height:44px}
+#appDrawer #tabs button {display:flex;align-items:center;gap:13px}
+#appDrawer #tabs button svg {width:20px;height:20px;flex:none}
+#appDrawer #tabs button.active {font-weight:800}
+body.drawerOpen #drawerBackdrop {touch-action:manipulation}
+
+/* Welcome, orientation and dashboard with stable rhythm. */
+.flootHome {gap:16px}
+.flootHome .premiumHero {
+ box-shadow:0 14px 38px rgba(17,64,73,.16);
+ border-radius:25px;
+}
+.premiumHeroEyebrow,.premiumHeroDate {font-size:12px;line-height:1.5}
+.premiumHero h2 {letter-spacing:0;line-height:1.45;font-size:clamp(22px,5vw,27px)}
+.premiumHeroBody p {line-height:1.75;max-width:34ch}
+.premiumHeroAction {min-height:47px;border-radius:14px}
+.premiumHeroStats {
+ display:flex;gap:9px;flex-wrap:wrap;
+}
+.premiumHeroStats>span {
+ display:inline-flex;align-items:center;gap:7px;
+ padding:7px 10px;border:1px solid rgba(227,255,249,.17);
+ border-radius:999px;background:rgba(255,255,255,.09);
+ font-size:11px;line-height:1.55;
+}
+.premiumHeroStats>span strong {font-size:14px;font-weight:900;line-height:1}
+.flootHome .homeNumbers {gap:10px}
+.flootHome .homeNumber {
+ position:relative;overflow:hidden;
+ border:var(--mai-line);border-radius:19px;
+ background:#fff;box-shadow:var(--mai-elevated);
+}
+.flootHome .homeNumber::before {
+ content:"";position:absolute;inset-inline-start:0;top:13px;bottom:13px;
+ width:3px;border-radius:8px;background:#15988b;
+}
+.flootHome .homeNumberOverdue::before {background:#e6a658}
+.flootHome .homeNumberPatients::before {background:#6995b9}
+.flootHome .homeNumberOnDuty::before {background:#66a69c}
+.flootHome .homeStatHeading {min-height:26px}
+.flootHome .homeStatHeading svg {width:19px;height:19px}
+.flootHome .homeStatHeading span {font-size:12px;font-weight:700;line-height:1.5}
+.flootHome .homeNumber strong {font-size:clamp(23px,5.5vw,33px);color:#173a46}
+.flootHome .homeSection {
+ border-radius:21px;border:var(--mai-line);
+ background:#fff;box-shadow:var(--cf-shadow);
+}
+.flootHome .homeSectionHead {display:flex;align-items:center;justify-content:space-between;gap:9px}
+.flootHome .homeSectionHead h2 {font-weight:800;line-height:1.5}
+.flootHomeDayNav {gap:5px;overflow-x:auto;scrollbar-width:none}
+.flootHomeDayNav::-webkit-scrollbar {display:none}
+.flootHomeDayNav button {
+ min-width:44px;padding-inline:8px;background:#f0f7f6;color:#236c6b;
+ border:1px solid #d8eae6;border-radius:12px;
+}
+.flootHome .homeStrip {
+ scrollbar-width:thin;scrollbar-color:#c0d5d8 transparent;
+ scroll-snap-type:x proximity;
+ -webkit-overflow-scrolling:touch;
+}
+.flootHomeAppointment {scroll-snap-align:start;border:1px solid #e0eaed;
+ border-radius:17px;background:#fbfdfd;box-shadow:none}
+.flootHomeAppointment .flootHomeApptTime {
+ font-weight:900;color:#146e73;white-space:nowrap;
+ font-variant-numeric:tabular-nums;
+}
+.flootHomeAppointment .patientLink {font-size:14px;text-align:start}
+.flootHomeTask {border-radius:14px;border:1px solid #e1e9ec;background:#fbfdfd}
+.flootHomeTask input[type=checkbox] {accent-color:var(--cf-primary)}
+.flootHome .homeQuick {display:grid;gap:9px}
+.flootHome .homeQuick button {
+ display:flex;align-items:center;justify-content:space-between;
+ border:1px solid #dfebed;border-radius:15px;
+ padding:13px;background:#f8fbfa;text-align:start;
+}
+.flootHome .homeQuick button svg {color:#087f7b}
+.homeQuickArrow {margin-inline-start:auto;color:#5a8990}
+.flootHome .dashboardPreviewGrid {gap:10px}
+.flootHome .dashboardPreviewMetric {
+ border:var(--mai-line);border-radius:17px;background:#f8fbfb;
+ min-width:0;
+}
+.flootHome .dashboardPreviewMetric strong {
+ font-size:clamp(15px,3.4vw,20px);overflow-wrap:anywhere;
+}
+.homePunch,.attendanceState {border-radius:19px}
+
+/* Shared zero-results states: helpful and consistent without false data. */
+#workspaceContent .uiEmptyState {
+ display:flex;flex-direction:column;align-items:center;text-align:center;
+ justify-content:center;gap:9px;min-width:0;width:100%;
+ border:1px dashed #cbdce0;border-radius:19px;
+ padding:25px 16px;background:#f9fcfc;color:#345462;
+ box-shadow:inset 0 2px 5px rgba(15,48,54,.014);
+}
+#workspaceContent .uiEmptyGlyph {
+ width:50px;height:50px;display:grid;place-items:center;
+ background:#e6f4f0;border:1px solid #d1e9e3;
+ border-radius:16px;color:#087675;
+}
+#workspaceContent .uiEmptyGlyph svg {width:25px;height:25px}
+#workspaceContent .uiEmptyState strong {font-size:15px;color:#244653;font-weight:800}
+#workspaceContent .uiEmptyState p {
+ margin:0;max-width:36ch;font-size:12px;line-height:1.8;color:#536e79;
+}
+#workspaceContent .uiEmptyState button {margin-top:4px;min-height:46px;padding-inline:21px}
+#workspaceContent .uiLoadingState {
+ display:grid;gap:12px;max-width:100%;
+ padding:8px 1px 20px;
+}
+#workspaceContent .uiSkeleton {
+ display:block;background:linear-gradient(95deg,#e8f0f2 16%,#f6fafb 39%,#e8f0f2 62%);
+ background-size:220% 100%;animation:maiSkeleton 1.55s linear infinite;
+ border-radius:16px;
+}
+#workspaceContent .uiSkeletonHeading {height:35px;width:min(45%,210px);margin-bottom:7px}
+#workspaceContent .uiSkeletonTile {min-height:95px}
+#workspaceContent .uiLoadingText {font-size:12px;color:#526e7a;text-align:center}
+@keyframes maiSkeleton {to{background-position-x:-220%}}
+
+/* Search, filters and editable forms must feel like one product. */
+#workspaceContent :is(.controls,.calendarToolbar,.taskToolbar,.patientAdvancedFilters,
+.financeFilterToolbar,.expenseFilterToolbar,.patientSearchControls) {
+ gap:10px;
+}
+#workspaceContent :is(.controls,.patientDirectoryActions,.financeCreateBar,.patientResultHeading) {
+ min-width:0;
+}
+#workspaceContent :is(.calendarToolbar,.patientAdvancedFilters,.financeRangesForm,
+ .expenseFilterToolbar,.taskToolbar,.crmFilters,.calendarFilterBox) {
+ background:#fff;border:1px solid #e0e9ee;
+ border-radius:19px;box-shadow:var(--cf-shadow);
+}
+#workspaceContent :is(.patientAdvancedFilters,.financeRangesForm,.calendarFilterInner) {padding:14px}
+#workspaceContent :is(.patientFilterToggle,.calendarFilterBox>summary,
+ .invoiceFilterAccordion>summary,.financeRangesForm summary) {
+ min-height:45px;color:#215b63;font-weight:800;
+ cursor:pointer;
+}
+#workspaceContent :is(.patientFilterToggle,.calendarFilterBox>summary,
+ .invoiceFilterAccordion>summary) {border-radius:14px}
+#workspaceContent :is(.patientFilterToggle,.patientDirectoryCreate) {font-size:13px}
+#workspaceContent :is(.cardForm,.settingsSection,.invoiceFilterAccordion,
+ .periodToolbar,.attendanceIntro) {
+ border:var(--mai-line);border-radius:20px;
+ background:#fff;box-shadow:var(--cf-shadow);
+}
+#workspaceContent :is(.cardForm,.patientAdvancedFilters,.settingsSection) h2 {
+ font-size:17px;font-weight:800;line-height:1.5;color:#173b48;
+}
+#workspaceContent :is(.cardForm,.patientAdvancedFilters,.settingsSection) h3 {
+ font-size:14px;font-weight:800;color:#234553;
+}
+#workspaceContent :is(label,.patientRange label,.financeRangesForm label) {
+ line-height:1.55;
+}
+#workspaceContent :is(label,form)>small {color:#56717c;line-height:1.65}
+#workspaceContent :is(.patientFilterActions,.financeRecordActions,.recordEditorActions,
+  .settingsRowBtns,.actionBtns) {display:flex;gap:7px;flex-wrap:wrap}
+#workspaceContent :is(.patientFilterActions,.financeRecordActions,
+ .settingsRowBtns,.actionBtns) button {min-height:44px;border-radius:12px}
+#workspaceContent :is(.patientContactLinks,.patientListActions) a {border-radius:12px}
+#workspaceContent :is(.patientBack,.patientOpenButton,.patientWhatsapp) {font-weight:800}
+#workspaceContent .patientPagination {
+ display:flex;align-items:center;justify-content:center;
+ flex-wrap:wrap;gap:12px;margin-block:16px 8px;
+}
+#workspaceContent .patientPagination button {min-width:81px;border-radius:12px}
+#workspaceContent .patientPagination>span {font-variant-numeric:tabular-nums;font-size:12px}
+
+/* Patient directory and clinical record: cards never squeeze the name. */
+#workspaceContent .patientResultHeading {
+ display:flex;align-items:baseline;justify-content:space-between;gap:9px;
+ flex-wrap:wrap;margin-block:17px 11px;
+}
+#workspaceContent .patientResultHeading h2 {margin:0;font-size:17px;color:#193c48}
+#workspaceContent .patientResultHeading span {color:#58727b;font-size:12px}
+#workspaceContent .patientBrowseRow {
+ gap:12px;align-items:flex-start;
+ padding:14px;border:1px solid #dce8ea;
+ border-radius:19px;box-shadow:var(--cf-shadow);
+ background:white;
+}
+#workspaceContent .patientBrowseIdentity {display:flex;gap:11px;align-items:flex-start;min-width:0}
+#workspaceContent .patientBrowseAvatar {
+ flex-shrink:0;display:grid;place-items:center;
+ width:43px;height:43px;border-radius:15px;
+ background:linear-gradient(145deg,#e4f6f2,#d4eae5);
+ border:1px solid #cce6df;color:#116d69;font-weight:800;
+}
+#workspaceContent .patientBrowseDetails {min-width:0;flex:1}
+#workspaceContent .patientBrowseDetails .patientLink {
+ font-weight:800;font-size:14px;line-height:1.65;text-align:start;
+}
+#workspaceContent .patientBrowseDetails>small {font-size:12px;color:#5b7580;direction:auto}
+#workspaceContent .patientBrowseMoney {
+ background:#f5f9fa;border:1px solid #e6eff1;
+ padding:9px;border-radius:12px;gap:7px;
+ font-size:11px;line-height:1.55;
+}
+#workspaceContent .patientBrowseMoney>span {overflow-wrap:anywhere}
+#workspaceContent .patientListActions {gap:8px}
+#workspaceContent .patientListActions button,#workspaceContent .patientListActions a {
+ font-size:12px;min-height:43px;
+}
+#workspaceContent :is(.patientHeader,.patientHistoryHeading,.patientSummaryCard,
+ .patientHistoryEntry,.patientHistoryRow,.patientNoteRow) {
+ border-radius:18px;overflow-wrap:anywhere;
+}
+#workspaceContent :is(.patientHistoryEntry,.patientHistoryRow,.patientNoteRow) {
+ border:1px solid #e2ecee;background:#fff;
+}
+#workspaceContent :is(.patientHistoryFilters,.patientSectionTabs) {
+ overflow-x:auto;-webkit-overflow-scrolling:touch;
+ scrollbar-width:thin;max-width:100%;
+}
+#workspaceContent :is(.patientHistoryFilters,.patientSectionTabs) button {
+ white-space:nowrap;min-height:44px;
+}
+
+/* Scheduling: calendar first, compact controls, readable time columns. */
+#workspaceContent .calendarPlannerIntro {
+ padding:17px;border-radius:20px;
+ border:1px solid #dce8ec;
+ background:linear-gradient(120deg,#fff,#f3faf8);
+ box-shadow:var(--cf-shadow);
+}
+#workspaceContent .calendarPlannerIntro h2 {font-size:18px;font-weight:800;color:#1b414e}
+#workspaceContent .calendarPlannerIntro p {font-size:12px;color:#607986;line-height:1.6}
+#workspaceContent .calendarToolbar {padding:12px;align-items:center}
+#workspaceContent .calendarToolbar .calendarModes {
+ display:flex;gap:5px;background:#eff5f5;
+ padding:4px;border-radius:14px;
+}
+#workspaceContent .calendarToolbar .calendarModes button {
+ flex:1 1 0;min-width:0;border:1px solid transparent;
+ background:transparent;font-size:12px;color:#486772;
+}
+#workspaceContent .calendarToolbar .calendarModes button.selected {
+ background:#fff;border-color:#d4e8e4;color:#086d6a;
+ box-shadow:0 2px 8px rgba(24,70,79,.065);font-weight:800;
+}
+#workspaceContent .calendarToolbarGroup button {
+ border:1px solid #dae8ea;border-radius:12px;background:#fff;
+}
+#workspaceContent .calendarHeading {
+ display:flex;align-items:baseline;justify-content:space-between;
+ flex-wrap:wrap;gap:8px;padding-inline:3px;
+}
+#workspaceContent .calendarHeading h2 {font-size:17px;font-weight:800;color:#183b49}
+#workspaceContent .calendarDayPlanner {
+ border-radius:20px;overflow:hidden;border:1px solid #dce7ea;
+ background:white;box-shadow:var(--cf-shadow);
+}
+#workspaceContent .calendarDayTitle {
+ padding:13px 15px;background:#eaf6f3;border-bottom:1px solid #d2e9e4;
+ color:#1d5962;
+}
+#workspaceContent .calendarDayOverview {gap:7px}
+#workspaceContent .calendarDayOverview>div {
+ border-radius:12px;background:#f6faf9;border:1px solid #e2edee;
+}
+#workspaceContent .calendarHourRow {border-bottom:1px solid #edf1f3}
+#workspaceContent .calendarHourRow:last-child {border-bottom:0}
+#workspaceContent .calendarHourRow.hasAppointments {background:#fbfefd}
+#workspaceContent .calendarHourLabel {
+ color:#226c73;background:#f4f9f9;
+ font-weight:800;white-space:nowrap;
+ font-variant-numeric:tabular-nums;
+}
+#workspaceContent .calendarSlotBtn {
+ border:1px dashed #8ac7c3;background:#eff9f6;color:#076d6e;
+ border-radius:12px;min-height:44px;font-weight:800;
+}
+#workspaceContent .calendarAppointment {
+ border-radius:13px;border:1px solid #d8e7e9;box-shadow:none;
+}
+#workspaceContent .calendarWeekFrame,#workspaceContent .calendarMonthFrame {
+ border:1px solid #dae7eb;border-radius:19px;background:white;
+ box-shadow:var(--cf-shadow);max-width:100%;
+}
+#workspaceContent :is(.calendarWeekScroll,.calendarMonthScroll,
+ .calendarGridScroll) {max-width:100%;overscroll-behavior-x:contain}
+#workspaceContent .calendarMonthDay {
+ border-radius:11px;min-width:0;
+}
+#workspaceContent .calendarWeekFrozenHours {
+ background:#f5faf9;
+}
+#workspaceContent .calendarBookingForm {scroll-margin-top:15px}
+
+/* Tasks, shift calendar, GPS attendance and team operations. */
+#workspaceContent :is(.workspaceSectionIntro,.attendanceIntro,.taskMonthPanel,
+ .attendanceMonthPanel,.staffShiftPanel) {border-radius:20px}
+#workspaceContent :is(.workspaceSectionIntro,.attendanceIntro) h2 {
+ color:#1d3d49;font-weight:800;font-size:18px;
+}
+#workspaceContent .taskOverview {gap:9px}
+#workspaceContent .taskMetric {
+ min-width:0;padding:13px;border:1px solid #e0eaed;
+ background:#fff;border-radius:18px;
+ box-shadow:var(--cf-shadow);
+}
+#workspaceContent .taskMetric svg {width:21px;height:21px}
+#workspaceContent .taskMetric strong {
+ font-size:clamp(21px,5.3vw,29px);font-variant-numeric:tabular-nums;
+}
+#workspaceContent .taskListHeading {font-size:17px;color:#1c404b}
+#workspaceContent :is(.taskEntry,.taskPersonGroup,.crmRow,.attendanceHistoryRow,
+ .attendanceReportRow,.settingsListRow) {
+ border:1px solid #e1eaee;background:#fff;
+ border-radius:16px;box-shadow:0 3px 12px rgba(19,49,57,.04);
+}
+#workspaceContent .taskEntry {padding:13px}
+#workspaceContent .taskEntryActions button {font-size:12px}
+#workspaceContent .taskOverdue {
+ border:1px solid #eadcc5;border-radius:17px;
+ background:#fffdfa;overflow:hidden;
+}
+#workspaceContent .taskOverdue>summary {
+ min-height:48px;display:flex;align-items:center;gap:9px;
+ padding:11px;color:#865718;font-weight:800;
+}
+#workspaceContent .taskOverdue>summary svg {width:18px;height:18px}
+#workspaceContent .attendanceState {
+ border:1px solid #dce9eb;background:#fff;
+ box-shadow:var(--cf-shadow);
+}
+#workspaceContent .attendancePrimary {
+ background:#087e83;color:#fff;border-radius:14px;
+ min-height:50px;font-weight:800;
+}
+#workspaceContent .attendanceHistoryRow small {color:#57717a}
+
+/* Financial records: high-signal amounts and actions stay discoverable. */
+#workspaceContent .financeCreateBar {
+ display:flex;gap:10px;align-items:center;justify-content:space-between;
+ flex-wrap:wrap;border-radius:16px;
+ background:#edf7f4;border:1px solid #d9eae5;padding:10px 12px;
+}
+#workspaceContent .financeCreateBar>span {font-size:12px;color:#4d6c76}
+#workspaceContent .financeRecordRow {
+ gap:13px;padding:15px;
+ border:1px solid #dce8eb;border-radius:19px;
+ background:#fff;box-shadow:var(--cf-shadow);
+}
+#workspaceContent .financeRecordMain,.financeRecordIdentity {min-width:0}
+#workspaceContent :is(.financeProcedure,.financePaymentAmount) {
+ color:#183e4b;font-weight:800;line-height:1.65;
+}
+#workspaceContent .financePaymentAmount {font-size:clamp(18px,4.8vw,23px);color:#117663}
+#workspaceContent .financeRecordMeta {
+ display:block;margin-top:4px;color:#58737e;line-height:1.75;
+ font-size:12px;overflow-wrap:anywhere;
+}
+#workspaceContent .financeRecordActions {
+ display:flex;gap:7px;flex-wrap:wrap;
+}
+#workspaceContent .financeRecordActions button {
+ border:1px solid #dbe8ea;background:#f7fafb;color:#27515e;
+ padding:9px 12px;border-radius:12px;min-height:44px;
+}
+#workspaceContent .financeRecordActions button.primary {
+ border-color:var(--cf-primary);background:var(--cf-primary);color:#fff;
+}
+#workspaceContent .financeRecordActions button[data-void-invoice],
+#workspaceContent .financeRecordActions button[data-void-payment] {
+ color:#9d3847;background:#fff8f8;border-color:#f1dcdf;
+}
+#workspaceContent :is(.invoiceLine,.paymentSourceOption,.financeAuditEntry,
+ .financeAuditRow,.expenseRow) {
+ border-radius:15px;min-width:0;
+}
+#workspaceContent :is(.financeRangesForm,.invoiceFilterBody) {
+ gap:12px;
+}
+#workspaceContent .expenseFilterToolbar label {min-width:0}
+#workspaceContent .expenseNewForm .expenseExtraFields {
+ border:1px solid #dce8eb;border-radius:14px;
+ padding:9px;
+}
+#workspaceContent .expenseExtraFields>summary {color:#23626a;font-weight:800}
+#workspaceContent :is(.adminAnalyticsGrid,.dashboardPreviewGrid,.expenseSummaryGrid,
+ .reportMetricGrid) {gap:10px}
+
+/* Settings & staff: predictable rows, grouped controls, readable permissions. */
+#workspaceContent .settingsSection {padding:16px;margin-block:12px}
+#workspaceContent .settingsListRow {
+ display:flex;align-items:center;justify-content:space-between;
+ gap:11px;padding:12px;
+}
+#workspaceContent .settingsListRow>div:first-child {min-width:0}
+#workspaceContent .settingsListRow strong {font-size:13px;color:#264751}
+#workspaceContent .settingsListRow small {display:block;color:#5b7580}
+#workspaceContent .settingsQuickAdd {
+ border-radius:15px;background:#f6faf9;border:1px solid #e1eeeb;
+ padding:12px;gap:10px;
+}
+#workspaceContent .settingsRowBtns button {min-height:44px}
+#workspaceContent :is(.settingCheck,.check) input[type=checkbox] {
+ accent-color:var(--cf-primary);
+ width:18px;height:18px;flex-shrink:0;
+}
+#workspaceContent #staffPermissions .grid {gap:8px}
+#workspaceContent #staffPermissions label.check {
+ padding:9px;border:1px solid #e0ebed;border-radius:12px;
+ background:#f9fbfb;
+}
+
+/* Patient editor, financial editor and search drawer bottom sheets. */
+dialog.patientRecordEditor,#globalSearchDialog {
+ padding:0;overflow:auto;
+}
+dialog.patientRecordEditor .recordEditorHeading,
+#globalSearchDialog .globalSearchHeader {
+ display:flex;align-items:center;justify-content:space-between;
+ gap:12px;background:#fff;border-bottom:1px solid #e1ebec;
+ position:sticky;top:0;z-index:5;
+ padding:14px 16px;margin:0;
+}
+dialog.patientRecordEditor .recordEditorHeading h2,
+#globalSearchDialog .globalSearchHeader h2 {font-size:17px;color:#183e4b}
+dialog.patientRecordEditor > form,dialog.patientRecordEditor > section,
+dialog.patientRecordEditor > p {margin:14px 16px}
+dialog.patientRecordEditor > form {padding-bottom:18px}
+dialog.patientRecordEditor form input,dialog.patientRecordEditor form textarea,
+dialog.patientRecordEditor form select {max-width:100%}
+dialog.patientRecordEditor button[data-close-patient-editor],
+#globalSearchDialog button[data-global-search-close] {
+ border:1px solid #dfebed;background:#f4f8f9;
+ color:#2c5962;border-radius:13px;flex-shrink:0;
+}
+#globalSearchDialog .globalSearchLabel,
+#globalSearchDialog #globalSearchQuery,
+#globalSearchDialog #globalSearchResults {margin-inline:16px}
+#globalSearchDialog #globalSearchQuery {width:calc(100% - 32px)}
+#globalSearchDialog #globalSearchResults {margin-block:14px 22px}
+dialog.patientRecordEditor .bookingFlootFooter {
+ background:#fff;border-top:1px solid #e1ebed;
+}
+
+/* Layout guardrails for small handsets, landscape and accessibility. */
+@media(max-width:999px) {
+ body.signedIn .container {padding-bottom:calc(107px + env(safe-area-inset-bottom))}
+ #workspaceContent {overflow-wrap:break-word}
+ #workspaceContent :is(.patientBrowseRow,.financeRecordRow,.settingsListRow,
+ .taskEntry,.calendarToolbar,.calendarToolbarGroup,.patientAdvancedFilters,
+ .settingsSection,.financeRangesForm) {max-width:100%}
+ #workspaceContent :is(.calendarWeekFrame,.calendarMonthFrame) {
+  overflow-x:auto;overscroll-behavior-y:auto;
+ }
+ #appDrawer {max-height:100dvh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+ dialog.patientRecordEditor,#globalSearchDialog {
+  padding-bottom:max(14px,env(safe-area-inset-bottom));
+ }
+}
+@media(max-width:600px) {
+ body.signedIn .container {padding-inline:12px}
+ body.signedIn #workspace>.panel>.sectionHead {margin-bottom:13px}
+ #workspace>.panel>.sectionHead .screenSubtitle {font-size:12px}
+ .flootHome .homeNumbers,.flootHome .dashboardPreviewGrid {grid-template-columns:repeat(2,minmax(0,1fr))}
+ .flootHome .homeNumber {padding:13px;min-height:102px}
+ .flootHome .homeSection {padding:14px 12px}
+ .flootHome .homeQuick {grid-template-columns:repeat(2,minmax(0,1fr))}
+ .flootHome .homeQuick button {padding:11px;min-height:49px}
+ .flootHome .homeQuick button span {min-width:0}
+ #workspaceContent .patientBrowseMoney {display:flex;flex-wrap:wrap}
+ #workspaceContent .patientBrowseRow {flex-direction:column}
+ #workspaceContent .patientListActions {
+  width:100%;display:flex;align-items:center;flex-wrap:wrap;
+ }
+ #workspaceContent .patientListActions .patientOpenButton {margin-inline-start:auto}
+ #workspaceContent .financeRecordRow {flex-direction:column}
+ #workspaceContent .financeRecordActions {width:100%}
+ #workspaceContent .financeRecordActions button {flex:0 1 auto}
+ #workspaceContent .taskOverview {grid-template-columns:repeat(3,minmax(0,1fr))}
+ #workspaceContent .taskMetric {padding:9px 7px;border-radius:14px}
+ #workspaceContent .taskMetric span {font-size:10px;line-height:1.5}
+ #workspaceContent .taskMetric strong {font-size:22px}
+ #workspaceContent .calendarDayOverview {grid-template-columns:repeat(2,minmax(0,1fr))}
+ #workspaceContent .calendarToolbar .calendarModes {width:100%}
+ #workspaceContent .calendarToolbarGroup {min-width:0}
+ #workspaceContent .calendarDayTitle {display:flex;flex-wrap:wrap;gap:5px}
+ #workspaceContent .settingsListRow {flex-wrap:wrap}
+ #workspaceContent .settingsListRow .settingsRowBtns {width:100%;justify-content:flex-start}
+ dialog.patientRecordEditor,#globalSearchDialog {
+  max-height:calc(var(--cf-visual-height) - env(safe-area-inset-top) - 8px);
+ }
+}
+@media(max-width:380px) {
+ body.signedIn .container {padding-inline:9px}
+ .premiumHeroStats {gap:6px}
+ .premiumHeroStats>span {font-size:10px;padding:6px 8px}
+ .flootHome .homeQuick {gap:7px}
+ .flootHome .homeQuick button {font-size:11px;gap:5px}
+ .flootHome .homeNumber {padding:10px}
+ .flootHome .homeStatHeading span {font-size:11px}
+ #workspaceContent .calendarToolbar {padding:9px}
+ #workspaceContent .calendarToolbarGroup {gap:4px}
+ #workspaceContent .calendarToolbarGroup button {min-width:40px;padding-inline:6px}
+ #workspaceContent .patientBrowseRow {padding:11px}
+ #workspaceContent .patientBrowseIdentity {gap:8px}
+ #workspaceContent .patientBrowseAvatar {width:38px;height:38px;border-radius:12px}
+ #workspaceContent .financeRecordRow {padding:12px}
+ #workspaceContent .uiEmptyState {padding:22px 12px}
+}
+@media(min-width:700px) {
+ .flootHome .homeQuick {grid-template-columns:repeat(3,minmax(0,1fr))}
+ #workspaceContent .patientBrowseRow {align-items:center}
+ #workspaceContent .financeRecordRow {align-items:center}
+ #workspaceContent .settingsSection {padding:20px}
+}
+@media(prefers-reduced-motion:reduce) {
+ #workspaceContent .uiSkeleton {animation:none;background:#e8f0f2}
+ #workspaceContent :is(.calendarAppointment,.taskEntry,.patientBrowseRow,.financeRecordRow) {transition:none}
+}
+@media(prefers-contrast:more) {
+ :root {--cf-border:#9aafb5;--cf-focus:#006967}
+ #workspaceContent :is(.uiEmptyState,.patientBrowseRow,.financeRecordRow,
+ .cardForm,.calendarToolbar,.taskMetric) {border-color:#7d9fa8}
+ #workspaceContent :is(.patientBrowseMoney,.financeRecordMeta,.screenSubtitle) {color:#284b58}
+}
+
+/* Login: same design language as the signed-in workspace. */
+.login .loginWelcome {
+ display:flex;align-items:center;gap:13px;margin-bottom:20px;
+ padding-bottom:17px;border-bottom:1px solid #e3ecee;
+}
+.login .loginWelcomeSeal {
+ width:54px;height:54px;flex-shrink:0;
+ display:grid;place-items:center;
+ color:#155a65;background:#e8f7f3;
+ border:1px solid #cee9e2;border-radius:17px;
+}
+.login .loginWelcome>div {display:grid;gap:1px;min-width:0}
+.login .loginWelcomeEyebrow {
+ direction:ltr;text-align:start;letter-spacing:.18em;
+ font-size:9px;font-family:system-ui,sans-serif;font-weight:800;
+ color:#365e64;
+}
+.login .loginWelcome strong {
+ direction:ltr;text-align:start;
+ font-size:26px;line-height:1.2;font-weight:400;
+ color:#194a55;font-family:Allura,"Brush Script MT",cursive;
+}
+.login h1 {font-size:clamp(21px,4.8vw,24px);line-height:1.45}
+.login .loginIntro {font-size:13px;margin-top:6px;margin-bottom:18px;line-height:1.9}
+.login .passwordGroup {position:relative}
+.login .passwordGroup #togglePassword {
+ min-width:46px;min-height:46px;border-radius:11px;
+}
+.login .loginModes {margin-block:10px 17px}
+.login .loginModes button {line-height:1.5}
+.login .check {display:flex;align-items:center;gap:9px}
+.login .check input {accent-color:var(--cf-primary);min-width:19px;min-height:19px}
+.login form>button[type=submit] {border-radius:14px;min-height:52px}
+@media(max-width:600px) {
+ .login {margin:16px auto 30px;padding:22px 17px}
+ .login .loginWelcome {margin-bottom:18px}
+ .login .loginWelcomeSeal {width:49px;height:49px}
+}
+
+/* ======================================================================
+   DR MAI — MOBILE UX V4 · ACCESSIBILITY + CLINICAL WORKFLOW FINISH
+   Safe presentation refinements: no service or persistence changes.
+   ====================================================================== */
+body.signedIn #workspace>.panel>.sectionHead #sectionTitle:focus {
+ scroll-margin-block-start:15px;
+}
+body.signedIn #workspace>.panel>.sectionHead #sectionTitle:focus:not(:focus-visible) {
+ outline:none;
+}
+body.signedIn #workspace>.panel>.sectionHead #sectionTitle:focus-visible {
+ outline:3px solid var(--cf-focus);outline-offset:5px;border-radius:5px;
+}
+#appDrawer #tabs button[data-view][aria-current=page] {
+ position:relative;font-weight:800;
+ background:#e5f5f1;color:#086c6b;
+}
+#appDrawer #tabs button[data-view][aria-current=page]::before {
+ content:"";position:absolute;inset-inline-start:0;
+ height:60%;width:3px;top:20%;border-radius:9px;
+ background:var(--cf-primary);
+}
+#bottomNav button[data-view][aria-current=page] {
+ color:#086c6b;font-weight:800;
+}
+
+/* Search reads like a native result list, with clearly separated subjects. */
+#globalSearchDialog .globalSearchHeader h2 {font-size:17px;font-weight:800}
+#globalSearchDialog .globalSearchLabel {
+ display:block;font-size:12px;color:#4d6c76;font-weight:700;
+ line-height:1.6;margin-top:14px;margin-bottom:7px;
+}
+#globalSearchDialog #globalSearchQuery {
+ min-height:51px;border:1px solid #bbd4d5;
+ background:#f7fbfb;border-radius:14px;
+}
+#globalSearchDialog #globalSearchResults {
+ display:grid;gap:14px;min-width:0;overflow-wrap:anywhere;
+}
+#globalSearchResults section {min-width:0}
+#globalSearchResults section h3 {
+ font-weight:800;font-size:13px;color:#255565;
+ margin-block:5px 10px;padding-bottom:8px;
+ border-bottom:1px solid #e5edef;
+}
+#globalSearchResults .globalResult {
+ display:grid;gap:4px;min-height:58px;width:100%;
+ padding:11px 13px;text-align:start;background:#fff;
+ border:1px solid #dce8ec;border-radius:14px;
+ box-shadow:0 3px 13px rgba(21,50,59,.04);
+ transition:background-color .16s ease,border-color .16s ease;
+ overflow-wrap:anywhere;
+}
+#globalSearchResults .globalResult:focus-visible {
+ outline:3px solid var(--cf-focus);outline-offset:1px;
+}
+#globalSearchResults .globalResult strong {
+ font-size:13px;font-weight:800;line-height:1.5;color:#214d58;
+}
+#globalSearchResults .globalResult small,
+#globalSearchResults .globalResult span {
+ color:#57737c;font-size:11px;line-height:1.65;
+}
+#globalSearchResults .globalNoteResult {
+ border-inline-start:3px solid #62aaa2;
+}
+#globalSearchResults .globalSearchLimit {
+ padding:8px 11px;border-radius:11px;
+ background:#fff7ed;color:#874e17;
+}
+
+/* Patient profile: put information, quick actions and balances in a stable
+   reading order, even when phone numbers and treatment labels are long. */
+#workspaceContent .patientFlootMetadata {
+ display:flex;align-items:center;gap:7px 12px;
+ color:#456976;font-size:12px;line-height:1.8;
+ overflow-wrap:anywhere;
+}
+#workspaceContent .patientFlootMetadata>span {
+ min-width:0;max-width:100%;overflow-wrap:anywhere;
+}
+#workspaceContent .patientFlootMetadata small {color:#657e86}
+#workspaceContent .patientFlootQuick {
+ border:1px solid #daebea;background:#f0f8f6;
+ border-radius:17px;gap:9px;padding:12px;
+}
+#workspaceContent .patientFlootQuick button {
+ min-width:0;min-height:47px;
+ border-radius:13px;line-height:1.5;font-weight:800;
+}
+#workspaceContent .patientFlootContactActions {
+ border:1px solid #dce9ec;background:#f7fbfb;
+ border-radius:17px;padding:12px;
+}
+#workspaceContent .patientFlootContactActions .patientContactLinks {display:contents}
+#workspaceContent .patientFlootContactActions :is(a,button) {
+ min-height:45px;border-radius:12px;
+}
+#workspaceContent .patientFlootAccount {
+ border:1px solid #d6e8e4;background:#f7fbf9;
+ border-radius:20px;box-shadow:var(--cf-shadow);
+}
+#workspaceContent .patientFlootAccount h3 {
+ font-size:16px;color:#214952;font-weight:800;
+}
+#workspaceContent .patientTotals {
+ min-width:0;
+}
+#workspaceContent .patientTotals strong {
+ overflow-wrap:anywhere;direction:ltr;
+ unicode-bidi:isolate;font-variant-numeric:tabular-nums;
+}
+#workspaceContent .patientAccountActions button {
+ min-height:47px;border-radius:13px;font-weight:800;
+}
+#workspaceContent .patientHistoryHeading h2 {
+ font-weight:800;font-size:17px;color:#214451;
+}
+#workspaceContent .patientFilters {
+ padding-block:7px 12px;gap:7px;
+ scroll-snap-type:x proximity;
+}
+#workspaceContent .patientFilters button {
+ min-height:44px;flex-shrink:0;
+ scroll-snap-align:start;font-size:12px;
+ font-weight:700;border:1px solid #d8e7e8;
+ background:#f7fbfb;color:#315a65;
+ padding-inline:12px;border-radius:999px;
+}
+#workspaceContent .patientFilters button.selected,
+#workspaceContent .patientFilters button[aria-pressed=true] {
+ background:#176a70;border-color:#176a70;color:#fff;
+}
+#workspaceContent .patientTimeline {
+ gap:10px;
+}
+#workspaceContent .patientEvent {
+ border:1px solid #dce9ec;border-radius:17px;
+ background:#fff;box-shadow:0 3px 15px rgba(21,50,59,.04);
+ padding:14px;min-width:0;
+}
+#workspaceContent .patientEvent strong {color:#214754;line-height:1.7}
+#workspaceContent .patientEvent p {
+ color:#506b75;line-height:1.75;overflow-wrap:anywhere;
+}
+#workspaceContent .patientEventMeta {
+ gap:8px;
+}
+#workspaceContent .patientEventMeta time {
+ font-variant-numeric:tabular-nums;color:#516e78;
+}
+#workspaceContent :is(.patientFlootArchive,.patientFlootWriteoff) button {
+ min-height:44px;border-radius:13px;
+}
+
+/* Polished feedback when form fields are invalid or inline errors appear. */
+:where(#workspaceContent,dialog.patientRecordEditor,.login)
+ :is(input,select,textarea):user-invalid {
+ border-color:#bc4b61;background-color:#fff9fa;
+ box-shadow:0 0 0 2px rgba(188,75,97,.09);
+}
+:where(#workspaceContent,dialog.patientRecordEditor,.login)
+ :is(input,select,textarea):focus-visible {
+ outline:3px solid rgba(8,126,131,.27);
+ outline-offset:1px;border-color:#087e83;
+}
+#workspaceContent :is(.crmRow,.taskEntry,.financeRecordRow,
+ .patientBrowseRow,.patientEvent):focus-within {
+ border-color:#9acbc8;
+ box-shadow:0 4px 17px rgba(17,89,93,.08);
+}
+#workspaceContent .crmRow strong {line-height:1.6;color:#244c57}
+#workspaceContent .crmRow p {line-height:1.8;color:#526f79}
+#workspaceContent .taskEntry input[type=checkbox] {
+ width:20px;height:20px;accent-color:#087e83;
+}
+#workspaceContent :is(.taskEntry,.crmRow,.patientEvent,.financeRecordRow) button {
+ touch-action:manipulation;
+}
+@media(max-width:600px){
+ #globalSearchDialog #globalSearchResults {
+  grid-template-columns:minmax(0,1fr);
+ }
+ #workspaceContent .patientFlootAccount {padding:16px 12px}
+ #workspaceContent .patientFlootMetadata {gap:6px 10px}
+ #workspaceContent .patientFlootQuick {padding:10px}
+ #workspaceContent .patientFlootQuick button {font-size:12px}
+ #workspaceContent .patientFilters {scrollbar-width:none}
+ #workspaceContent .patientFilters::-webkit-scrollbar {display:none}
+ #workspaceContent .patientEvent {padding:12px}
+}
+@media(max-width:359px){
+ #workspaceContent .patientFlootQuick {grid-template-columns:minmax(0,1fr)}
+ #workspaceContent .patientFlootQuick button[data-create=payment] {grid-column:auto}
+ #workspaceContent .patientFlootContactActions {padding:9px;gap:6px}
+ #globalSearchResults .globalResult {padding:11px;min-height:57px}
+}
+@media(hover:hover) and (pointer:fine){
+ #globalSearchResults .globalResult:hover {background:#f2faf7;border-color:#a9d5cb}
+}
+@media(prefers-reduced-motion:reduce){
+ #globalSearchResults .globalResult {transition:none}
+}
+
+/* Unsaved clinical input warning only appears after a user edits a sheet. */
+dialog.patientRecordEditor .recordEditorHeading .editorUnsavedLabel {
+ font-size:10px;line-height:1.55;font-weight:800;
+ color:#7f551b;background:#fff7e9;border:1px solid #ead6ae;
+ border-radius:999px;padding:5px 9px;min-width:0;
+ margin-inline-start:auto;
+}
+dialog.patientRecordEditor .recordEditorHeading .editorUnsavedLabel[hidden] {
+ display:none!important;
+}
+@media(max-width:390px) {
+ dialog.patientRecordEditor .recordEditorHeading {
+  gap:7px;padding-inline:11px;
+ }
+ dialog.patientRecordEditor .recordEditorHeading h2 {
+  min-width:0;overflow-wrap:anywhere;font-size:14px;
+ }
+ dialog.patientRecordEditor .recordEditorHeading .editorUnsavedLabel {
+  font-size:9px;padding:4px 6px;max-width:38%;
+ }
+}
+
+/* Mobile search feedback is announced separately from clinical result cards,
+   preventing screen readers from reading every patient/note on each keystroke. */
+#globalSearchDialog .globalSearchFeedback {
+ font-size:12px;line-height:1.7;color:#456c73;
+ margin:8px 2px 10px;min-height:18px;
+}
+#globalSearchDialog .globalSearchFeedback:empty {display:none}
+#globalSearchDialog #globalSearchResults[aria-busy="true"] {
+ opacity:.7;pointer-events:none;
+}
+#globalSearchDialog #globalSearchResults[role="region"] {
+ min-width:0;overflow-wrap:anywhere;
+}
+#fabMenu[role="group"] button:focus-visible {
+ outline:3px solid var(--cf-focus);
+ outline-offset:2px;
+}
+@media(prefers-reduced-motion:reduce) {
+ #globalSearchDialog #globalSearchResults {transition:none}
+}
+
+/* V4.2: clear immediate feedback during writes without changing the save flow. */
+dialog.patientRecordEditor .recordEditorHeading .editorSavingLabel {
+ display:inline-flex;align-items:center;gap:7px;
+ font-size:11px;line-height:1.5;font-weight:800;
+ color:#126c69;background:#eaf7f3;border:1px solid #baded4;
+ border-radius:999px;padding:6px 10px;
+ white-space:nowrap;margin-inline-start:auto;
+}
+dialog.patientRecordEditor .recordEditorHeading .editorSavingLabel[hidden] {
+ display:none!important;
+}
+form[data-submission-pending="1"] button[type=submit]:disabled {
+ cursor:progress;opacity:.8;
+}
+form[data-submission-pending="1"] button[type=submit]:disabled::after {
+ content:"";display:inline-block;
+ vertical-align:middle;margin-inline-start:9px;
+ width:13px;height:13px;border-radius:50%;
+ border:2px solid currentColor;border-inline-end-color:transparent;
+ animation:drMaiSavingSpin .85s linear infinite;
+}
+@keyframes drMaiSavingSpin {to{transform:rotate(360deg)}}
+@media(max-width:390px){
+ dialog.patientRecordEditor .recordEditorHeading .editorSavingLabel {
+  font-size:10px;padding:5px 7px;
+ }
+}
+@media(prefers-reduced-motion:reduce){
+ form[data-submission-pending="1"] button[type=submit]:disabled::after{animation:none}
+}
+
+/* Keep the clinical viewport open: privacy is accessible on demand and empty
+   status banners do not waste a row on every mobile route. */
+#status:empty {display:none}
+.container>details.privacyNotice {
+ padding:0;border:1px solid #e3e6d4;background:#fbfcf6;
+ color:#587166;border-radius:12px;
+ margin-block:5px 11px;box-shadow:none;overflow:hidden;
+}
+.container>details.privacyNotice>summary {
+ display:flex;align-items:center;gap:9px;
+ cursor:pointer;list-style:none;min-height:40px;
+ padding:7px 12px;font-size:11px;line-height:1.6;
+ font-weight:800;color:#55716a;
+}
+.container>details.privacyNotice>summary::-webkit-details-marker {display:none}
+.container>details.privacyNotice>summary::before {
+ content:"ⓘ";font-size:15px;font-weight:700;color:#578379;
+}
+.container>details.privacyNotice>summary::after {
+ content:"⌄";font-size:17px;line-height:1;margin-inline-start:auto;
+ transition:transform .15s ease;
+}
+.container>details.privacyNotice[open]>summary::after {transform:rotate(180deg)}
+.container>details.privacyNotice>p {
+ padding:10px 14px 13px;border-top:1px solid #e2e9dc;
+ font-size:12px;line-height:1.85;margin:0;color:#526b62;
+}
+.container>details.privacyNotice>summary:focus-visible {
+ outline:3px solid var(--cf-focus);outline-offset:-3px;
+ border-radius:11px;
+}
+@media(max-width:600px){
+ body.signedIn .container>details.privacyNotice {
+  margin-block:2px 9px;
+ }
+ body.signedIn .container>details.privacyNotice>summary {
+  min-height:36px;font-size:10px;padding-block:5px;
+ }
+}
+@media(prefers-reduced-motion:reduce){
+ .container>details.privacyNotice>summary::after{transition:none}
+}
+
+/* Dr Mai v4.3 — mobile invoice draft clarity, presentation only. */
+#newInvoice .invoiceDraftPreview {
+ display:block;min-width:0;border-radius:14px;
+ padding:12px 14px;font-size:13px;line-height:1.85;
+ font-weight:750;color:#0e5a59;
+ background:#effaf7;border:1px solid #cee9df;
+ overflow-wrap:anywhere;
+}
+#newInvoice .invoiceDraftPreview[data-valid="false"] {
+ color:#855627;background:#fff8ed;border-color:#efdbbc;
+}
+#newInvoice .invoiceLine {
+ min-width:0;border-radius:14px;
+}
+#newInvoice .invoiceLine input[name="itemPrice"],
+#newInvoice .invoiceLine input[name="itemQuantity"] {
+ font-variant-numeric:tabular-nums;
+}
+@media(max-width:430px){
+ #newInvoice .invoiceDraftPreview {font-size:12px;padding:10px 12px}
+ #newInvoice .invoiceLine {margin-block:6px}
+}
+
+/* Dr Mai Kassem — clinical polish and single-clinic mobile UX. */
+.top .brand {display:flex;align-items:center;justify-content:center;gap:10px;min-width:0}
+.top .brand>div {display:flex;align-items:center;min-width:0}
+.top .brandDentalLogo {
+ display:grid;place-items:center;flex:none;
+ color:#0c777e;background:transparent!important;
+ border:0!important;box-shadow:none!important;padding:0!important;
+ width:36px;height:40px;border-radius:0!important;
+}
+.top .brandDentalLogo svg {width:34px;height:36px}
+.top .brandSignature {
+ color:#076976;font-family:Allura,"Cairo",cursive;
+ font-size:clamp(27px,6.7vw,38px);font-weight:700;
+ text-shadow:0 0 8px rgba(22,172,190,.23),0 0 21px rgba(22,172,190,.12);
+ line-height:1.05;letter-spacing:.004em;white-space:nowrap;
+}
+#appDrawer .drawerHeading {display:flex;align-items:center;justify-content:center;position:relative}
+#appDrawer .drawerHeading strong {text-align:center;flex:1;color:#087785;font-size:17px;letter-spacing:.02em}
+#appDrawer .drawerHeading button {position:absolute;inset-inline-end:4px;top:50%;transform:translateY(-50%)}
+.flootHomeDayNav {display:flex;align-items:center;justify-content:center;gap:6px}
+.flootHomeDayNav .homeDatePicker {
+ display:flex;flex-direction:column;align-items:center;justify-content:center;
+ position:relative;min-width:110px;max-width:185px;flex:1;cursor:pointer;
+ padding:5px 8px;border:1px solid #d8eae6;border-radius:13px;
+ background:#f3fafa;color:#216b71;
+}
+.flootHomeDayNav .homeDatePicker span {font-size:10px;line-height:1.4;color:#42696f}
+.flootHomeDayNav .homeDatePicker strong {font-size:11px;line-height:1.55;text-align:center;white-space:normal}
+.flootHomeDayNav .homeDatePicker input[type=date] {
+ position:absolute;inset:0;width:100%;height:100%;opacity:0;
+ cursor:pointer;z-index:1;min-height:40px;
+}
+.flootHomeDayNav .homeDatePicker:focus-within {outline:3px solid #77aeba;outline-offset:2px}
+.flootHomeDayNav .homeDayCreate {font-size:20px;font-weight:800;min-width:39px}
+.reportPeriodPicker {display:grid;gap:10px;margin-block:8px 16px}
+.reportQuickPeriods {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.reportQuickPeriods button {min-width:0;min-height:43px;border-radius:11px;font-weight:750}
+.reportQuickPeriods button[aria-pressed=true] {background:#0a7880!important;color:white!important;border-color:#0a7880!important}
+.reportPeriodCarousel {display:flex;align-items:center;justify-content:space-between;gap:8px}
+.reportPeriodCarousel button {flex:none;min-width:62px;min-height:42px}
+.reportPeriodCarousel strong {min-width:0;flex:1;text-align:center;font-size:12px;line-height:1.7}
+.reportCustomPeriod summary {min-height:38px;cursor:pointer;font-size:12px;color:#487179}
+.reportCustomPeriod .periodControls {margin-top:9px}
+.paymentAmountWithAction {display:flex;align-items:end;gap:9px;min-width:0}
+.paymentAmountWithAction label {min-width:0;flex:1}
+.paymentAmountWithAction button {flex:none;min-height:44px}
+.paymentInvoiceLabel {display:flex;justify-content:space-between;align-items:center;gap:10px}
+.paymentInvoiceLabel strong {font-size:13px}
+.bookingDropdownActions {display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.bookingDropdownActions button {flex:1;min-width:110px}
+.invoiceRemoveLine {background:#fff2f3!important;color:#b82f46!important;border-color:#f4c9d1!important}
+.invoiceSavePay {background:#136c79!important;border-color:#136c79!important}
+.paymentInvoiceReadOnly {display:flex;justify-content:space-between;gap:7px;padding:8px 10px;border-bottom:1px solid #dceaea;font-size:12px}
+[data-payment-all-invoices-panel] {border:1px solid #dceaea;border-radius:11px;margin-block:8px;max-height:250px;overflow-y:auto}
+:where(.calendarAppointment,.flootHomeAppointment).appointmentState-booked {background:#fff!important;border-color:#e0e6e8!important}
+:where(.calendarAppointment,.flootHomeAppointment).appointmentState-confirmed {background:#edf5ff!important;border-color:#a8c9f6!important}
+:where(.calendarAppointment,.flootHomeAppointment).appointmentState-arrived {background:#fff1df!important;border-color:#f1c58e!important}
+:where(.calendarAppointment,.flootHomeAppointment):is(.appointmentState-completed,.appointmentState-attended) {background:#e9f8ed!important;border-color:#9fd7ae!important}
+:where(.calendarAppointment,.flootHomeAppointment):is(.appointmentState-cancelled,.appointmentState-no_show) {background:#fff0f0!important;border-color:#e8a7aa!important}
+select[data-appointment-status][data-appointment-state=confirmed] {background:#dbeaff;color:#144d9c}
+select[data-appointment-status][data-appointment-state=arrived] {background:#ffe1b3;color:#85500a}
+select[data-appointment-status][data-appointment-state=completed],
+select[data-appointment-status][data-appointment-state=attended] {background:#d9f1df;color:#146336}
+select[data-appointment-status][data-appointment-state=cancelled],
+select[data-appointment-status][data-appointment-state=no_show] {background:#ffe1e2;color:#a2222b}
+select[data-appointment-status] option[value=confirmed] {background:#dbeaff;color:#144d9c}
+select[data-appointment-status] option[value=arrived] {background:#ffe1b3;color:#85500a}
+select[data-appointment-status] option[value=completed] {background:#d9f1df;color:#146336}
+select[data-appointment-status] option[value=cancelled],
+select[data-appointment-status] option[value=no_show] {background:#ffe1e2;color:#a2222b}
+@media(max-width:430px) {
+ .reportQuickPeriods button {padding-inline:3px;font-size:12px}
+ .flootHomeDayNav {flex-wrap:wrap;justify-content:center}
+ .flootHomeDayNav button {min-width:52px}
+ .top .brandSignature {font-size:clamp(25px,6vw,31px)}
+}
+@media(prefers-reduced-motion:reduce) {.top .brandSignature{text-shadow:none}}
+
+/* V4.4 — accounts quick menu, manual staff corrections & WhatsApp reminders. */
+#accountsBottomButton{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px}
+#accountsBottomButton svg{width:21px;height:21px}
+#accountsBottomButton[hidden],#accountsMenu[hidden]{display:none!important}
+.accountsBottomMenu {
+ position:fixed;z-index:1250;bottom:calc(78px + env(safe-area-inset-bottom,0px));
+ inset-inline-start:12px;min-width:165px;max-width:calc(100vw - 28px);
+ display:flex;flex-direction:column;gap:6px;padding:9px;
+ border-radius:17px;border:1px solid #d7e6e8;background:#fff;
+ box-shadow:0 16px 45px rgba(11,55,68,.18);
+}
+.accountsBottomMenu button{min-height:45px;border:0;border-radius:11px;white-space:nowrap;background:#f0f8f8;color:#1a676a;font-weight:800}
+.accountsBottomMenu button:focus-visible,#accountsBottomButton:focus-visible{outline:3px solid #0a7d7d;outline-offset:2px}
+#notificationsButton{position:relative!important}
+.whatsappAlertBadge {
+ display:inline-flex;align-items:center;justify-content:center;
+ position:absolute;top:-5px;inset-inline-end:-6px;
+ padding:0 5px;min-width:20px;height:20px;border-radius:999px;
+ font:800 11px/1 Cairo,sans-serif;color:#fff;background:#df3241;
+ border:2px solid #fff;box-shadow:0 2px 5px rgba(113,15,22,.18);
+}
+.whatsappAlertBadge[hidden]{display:none!important}
+.attendanceManualAccess {display:flex;justify-content:center;margin:10px 0}
+.attendanceManualAccess button{min-height:44px;width:100%;max-width:480px}
+.whatsappIntro {display:grid;gap:8px;margin-block:8px 17px}
+.whatsappIntro h2 {font-size:19px;line-height:1.5;margin:0}
+.whatsappIntro p {font-size:12px;line-height:1.9;color:#566e76;margin:0}
+.whatsappIntro button {justify-self:start;min-height:38px}
+.whatsappTemplateSection {display:grid;gap:11px}
+.whatsappTemplateForm{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.whatsappTemplateForm label {display:flex;flex-direction:column;gap:6px;min-width:0;line-height:1.5;font-weight:750;font-size:12px}
+.whatsappTemplateForm :is(label,select,input,textarea) {min-width:0}
+.whatsappTemplateForm label[hidden]{display:none!important}
+.whatsappTemplateForm>.full{grid-column:1/-1}
+.whatsappTimingInputs {grid-column:1/-1;display:grid;grid-template-columns:1.2fr .8fr 1fr;gap:8px}
+.whatsappVariables{display:flex;flex-wrap:wrap;gap:6px}
+.whatsappVariables button{font-size:11px;border-radius:999px;min-height:34px;padding:6px 11px;background:#eef8f8;color:#187176;border:1px solid #d5e9e8}
+.whatsappTemplateForm textarea {min-height:116px;font-family:inherit;line-height:1.8;resize:vertical}
+.whatsappTemplateForm>button[type=submit]{grid-column:1/-1;min-height:48px}
+.whatsappTemplatesList {display:grid;gap:9px;margin-block:13px}
+.whatsappTemplateCard {border:1px solid #dce7e8;border-radius:15px;padding:14px;background:#fff;display:grid;gap:8px}
+.whatsappTemplateCard strong{color:#124f59}
+.whatsappTemplateCard small{color:#586e72;line-height:1.8}
+.whatsappTemplateCard p{background:#f5faf9;border-radius:11px;padding:11px;font-size:12px;line-height:1.9;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.whatsappTemplateCard button {justify-self:start;min-height:38px}
+.patientAlertList{display:grid;gap:12px}
+.patientAlertCard{display:grid;gap:11px;background:#fff;border:1px solid #d9e6e6;border-radius:18px;padding:14px;box-shadow:0 5px 20px rgba(20,60,69,.05)}
+.patientAlertHead{display:flex;align-items:center;justify-content:space-between;gap:9px}
+.patientAlertHead .patientLink{min-width:0;max-width:100%;font-size:16px;color:#134c56;font-weight:800;text-align:start;line-height:1.65;overflow-wrap:anywhere;text-decoration:underline;text-underline-offset:3px}
+.patientAlertHead span{background:#edf7f2;color:#277366;padding:5px 8px;border-radius:20px;font-size:11px;white-space:nowrap}
+.patientAlertCard>small{color:#536f79;font-size:11px;line-height:1.75}
+.patientAlertMessage{padding:13px;background:#f4faf8;border:1px solid #e5eeed;border-radius:12px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.85}
+.patientAlertActions{display:flex;flex-wrap:wrap;gap:7px}
+.patientAlertActions :is(button,a) {display:inline-flex;justify-content:center;align-items:center;min-height:43px;border:1px solid #d7e6e6;padding:9px 12px;border-radius:11px;font-size:12px;text-decoration:none;cursor:pointer}
+.patientAlertSend{background:#14785d!important;color:#fff!important;font-weight:800}
+.patientAlertMissingPhone{padding:9px;color:#a32a3c;font-size:11px}
+@media(max-width:430px){
+ .whatsappTemplateForm{grid-template-columns:1fr}
+ .whatsappTemplateForm label{grid-column:1/-1}
+ .whatsappTimingInputs{grid-template-columns:1fr 84px 90px;gap:6px}
+ .whatsappTimingInputs label{grid-column:auto}
+ .accountsBottomMenu{bottom:calc(76px + env(safe-area-inset-bottom,0px))}
+ .patientAlertActions :is(button,a) {flex:1}
+}
+@media(prefers-reduced-motion:reduce){
+ .whatsappAlertBadge,.accountsBottomMenu{transition:none!important;animation:none!important}
+}
+
+/* Continuation: shared workspace hierarchy and readable clinical records. */
+.screenModuleIcon {
+ display:grid;place-items:center;flex:0 0 48px;width:48px;height:48px;
+ border-radius:16px;background:#e0f2ee;color:#09645f;
+ border:1px solid #c6e5de;
+}
+.screenModuleIcon .uiMark {width:25px;height:25px}
+body.signedIn #workspace>.panel>.sectionHead {
+ display:flex;align-items:center;justify-content:flex-start;gap:13px;
+ padding:16px;background:#fff;border:1px solid var(--cf-border);
+ border-radius:20px;box-shadow:var(--cf-elevation-surface);
+}
+body.signedIn #workspace>.panel>.sectionHead::after {display:none}
+#workspaceContent .financeRecordAmounts {
+ display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;
+ margin:12px 0 0;padding:12px 0 0;border-top:1px solid #e4ecef;
+}
+.financeRecordAmounts>div {min-width:0}
+.financeRecordAmounts dt {font-size:11px;color:#47616b;margin-bottom:4px}
+.financeRecordAmounts dd {
+ margin:0;color:#183b49;font-size:15px;font-weight:800;
+ font-variant-numeric:tabular-nums;overflow-wrap:anywhere;
+}
+.financeRecordAmounts .financeOutstanding dd {color:#09645f}
+#workspaceContent .patientAlertMessage {
+ background:#edf7f3;border:1px solid #d8e9e2;border-radius:15px;
+ padding:16px;line-height:1.95;font-size:14px;
+}
+@media(max-width:700px) {
+ body.signedIn {background:#edf3f5}
+ body.signedIn .container {padding-inline:12px}
+ body.signedIn #workspace>.panel>.sectionHead {margin-block:4px 16px}
+ #workspace>.panel>.sectionHead #sectionTitle {font-size:22px;line-height:1.45}
+ #workspace>.panel>.sectionHead .screenSubtitle {font-size:12px;color:#47616b}
+ #bottomNav {
+  border-radius:24px 24px 0 0;box-shadow:0 -8px 30px rgba(22,51,65,.1);
+  border-top:1px solid #cedee3;
+ }
+ #bottomNav :is(button[data-view],#accountsBottomButton).active {color:#075d59}
+ #bottomNav :is(button[data-view],#accountsBottomButton).active .bottomNavIcon {
+  background:#d9eee8;border-radius:13px;min-width:46px;
+  display:grid;place-items:center;padding:4px 10px;
+ }
+ #workspaceContent :is(.patientBrowseRow,.financeRecordRow,.patientAlertCard) {
+  border-radius:20px;margin-block:12px;padding:16px;
+  border-color:#d8e5e9;box-shadow:0 4px 16px rgba(22,51,65,.045);
+ }
+ #workspaceContent .patientBrowseAvatar {
+  width:48px;height:48px;border-radius:17px;
+  background:#e0f0ed;color:#155d58;font-size:21px;
+ }
+ #workspaceContent :is(.financeRecordActions,.patientListActions,.patientAlertActions) {
+  border-top:1px solid #e6edef;padding-block-start:12px;margin-block-start:4px;
+  display:flex;flex-wrap:wrap;gap:8px;
+ }
+ #workspaceContent :is(.financeRecordActions,.patientListActions,.patientAlertActions)>:is(button,a) {
+  min-height:44px;border-radius:12px;
+ }
+ #workspaceContent .financeRecordActions .primary {flex:1 1 100%;white-space:nowrap}
+ #workspaceContent .financePaymentAmount {font-size:25px;color:#09645f;line-height:1.5}
+ #workspaceContent .financeProcedure {font-size:14px;line-height:1.7}
+ #workspaceContent .calendarDayTitle {
+  border-radius:16px;background:#143e4c;color:#fff;padding:14px 16px;
+ }
+ #workspaceContent .calendarDayTitle span {color:#e2f0f3}
+ #workspaceContent .calendarAppointment {
+  border-radius:16px;border-inline-start-width:4px;padding:12px;
+ }
+ #workspaceContent .attendanceState {
+  background:#143e4c;color:#fff;border:0;border-radius:22px;padding:22px 18px;
+ }
+ #workspaceContent .attendanceState :is(span,small,p,strong) {color:#fff}
+ dialog.patientRecordEditor .recordEditorHeading {
+  background:#f3f8f8;border-bottom:1px solid #d6e5e7;padding:16px;
+ }
+ dialog.patientRecordEditor .recordEditorHeading h2 {font-size:19px;line-height:1.6}
+ dialog.patientRecordEditor form label {font-weight:700;line-height:1.7}
+ dialog.patientRecordEditor :is(input,select,textarea) {border-radius:12px}
+}
+
+/* Keep the shared brand readable against a consistent light app header. */
+body.signedIn .top {background:#fff;color:#143e4c}
+/* Status rail, badge and controls share one semantic appointment accent. */
+#workspaceContent .calendarAppointment {border-inline-start-color:var(--appointment-accent)!important}
+.calendarAppointment.appointmentState-confirmed {--appointment-accent:#1d5ea8}
+.calendarAppointment.appointmentState-arrived {--appointment-accent:#8c510f}
+.calendarAppointment:is(.appointmentState-completed,.appointmentState-attended) {--appointment-accent:#18643c}
+.calendarAppointment:is(.appointmentState-cancelled,.appointmentState-no_show) {--appointment-accent:#a2222b}
+
+/* Dr Mai compact booking and time-proportional calendar. */
+body.signedIn .top {position:sticky!important;top:0!important;inset-block-start:0!important;z-index:65;padding-top:max(10px,env(safe-area-inset-top));background:#fff}
+body.signedIn .top :is(#menuButton,#globalSearch,#notificationsButton) {position:relative!important;inset:auto!important;transform:none!important;flex-shrink:0}
+body.signedIn #appActions {display:flex;align-items:center;gap:8px;position:static!important}
+body.signedIn #appActions[hidden] {display:none}
+body.signedIn #notificationsButton {width:44px;height:44px;border:1px solid #d6e5e6;border-radius:13px;background:#f4f9f8;color:#08777e}
+body.signedIn .top #globalSearch[hidden] {display:none}
+.flootHomeDayNav .homeDatePicker input[type=date]::-webkit-calendar-picker-indicator {position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
+dialog.patientRecordEditor.bookingEditor.flootBookingEditor {width:min(480px,calc(100vw - 20px));max-height:90dvh;border-radius:24px;padding:16px;margin:auto}
+.flootBookingEditor #newAppointment {gap:10px;grid-template-columns:1fr}
+.flootBookingEditor #newAppointment label {font-size:13px;gap:5px}
+.flootBookingEditor #newAppointment :is(input,select) {min-height:44px;padding:9px 12px;font-size:15px}
+.flootBookingEditor :is(.bookingFlootSummary,.bookingPatientActions,.bookingBranchHint,.bookingTimeHint,.bookingDurationHint,.bookingTimeInput>small,.bookingShortcutDisclaimer) {display:none!important}
+.flootBookingEditor .bookingDayLabel {font-size:12px;margin:0}
+.flootBookingEditor .bookingTimeScroll {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;overflow:visible}
+.flootBookingEditor .bookingTimeScroll button {min-width:0;min-height:40px;padding:6px;font-size:12px}
+.flootBookingEditor .bookingTimeGroup>strong {display:none}
+.flootBookingEditor .bookingQuickDays {display:flex;flex-wrap:wrap;gap:6px}
+.flootBookingEditor .bookingQuickDays button {padding:6px 9px;min-height:36px;font-size:12px;flex:1 1 auto}
+.bookingDurationPresets {display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.bookingDurationPresets button {min-height:40px;padding:6px;font-size:12px}
+.bookingDurationPresets button[aria-pressed=true] {background:#087e83;color:#fff;border-color:#087e83}
+.flootBookingEditor .bookingFlootFooter {position:static;display:flex;justify-content:flex-start;gap:8px;padding:10px 0 0;background:#fff}
+.flootBookingEditor .bookingFlootFooter button {min-height:44px;flex:1}
+.financeTodayStandalone {display:flex;align-items:center;gap:8px;padding:12px 4px}
+#workspaceContent .calendarHourRow,#workspaceContent .calendarWeekRow {height:120px;min-height:120px;max-height:120px}
+#workspaceContent .calendarHourContent {position:relative;display:block;overflow:visible;padding:0;min-height:120px}
+#workspaceContent .calendarWeekCell {position:relative;overflow:visible;min-height:120px;padding:0}
+#workspaceContent .calendarWeekCellEvents {position:absolute;inset:0;display:block;overflow:visible;pointer-events:none}
+#workspaceContent .calendarTimedVisit {position:absolute;top:calc(var(--visit-start)*2px);height:calc(var(--visit-duration)*2px);width:calc((100% - 30px)/var(--visit-lanes));inset-inline-start:calc(var(--visit-lane)*(100% - 30px)/var(--visit-lanes));z-index:4;pointer-events:auto;padding:1px}
+#workspaceContent .calendarTimedVisit .calendarAppointment {height:100%;min-height:0!important;max-height:100%;margin:0;padding:2px 5px!important;border-radius:7px;overflow:hidden;display:flex;flex-direction:row;align-items:center;gap:4px;box-shadow:none;border-inline-start-width:3px}
+#workspaceContent .calendarTimedVisit .calendarAppointmentHeader {display:contents}
+#workspaceContent .calendarTimedVisit :is(.calendarAppointmentDuration,.calendarApptStatus,.legacyAppointmentReview,.calendarAppointmentActions,.calendarAppointmentWho>small) {display:none!important}
+#workspaceContent .calendarTimedVisit .calendarAppointmentTime {font-size:10px;white-space:nowrap}
+#workspaceContent .calendarTimedVisit .calendarAppointmentWho {min-width:0;overflow:hidden}
+#workspaceContent .calendarTimedVisit .calendarAppointmentWho :is(button,strong) {min-height:0!important;padding:0!important;font-size:11px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+#workspaceContent :is(.calendarSlotBtn,.calendarWeekSlot) {position:absolute;bottom:2px;inset-inline-end:1px;z-index:2;width:28px;min-width:0;min-height:28px;padding:0;font-size:0}
+#workspaceContent :is(.calendarSlotBtn,.calendarWeekSlot)::after {content:'+';font-size:18px}
+.calendarNowLine {position:absolute;inset-inline:0;height:2px;background:#e44b57;z-index:8;pointer-events:none}
+.calendarNowLine::before {content:'';position:absolute;inset-inline-start:0;top:-3px;width:8px;height:8px;border-radius:50%;background:#e44b57}
+.calendarNowLine[hidden] {display:none}
+#workspaceContent .calendarHourLabel {align-self:start;padding-top:4px}
+#workspaceContent :is(.calendarNoAppointments,.calendarWeekEmpty) {font-size:11px;color:#71838a;padding:8px;display:block}
+
+.flootBookingEditor #newAppointment .bookingDurationInput {display:none!important}
+body.signedIn .top {background:#fff!important}
+body.signedIn .top #notificationsButton {display:inline-grid!important;place-items:center;width:44px;min-width:44px;height:44px;color:#08777e!important}
+body.signedIn .calendarWeekStickyHeader,body.signedIn .calendarDayPlanner .calendarDayTitle {top:78px}
+@media(max-width:700px) {
+ body.signedIn .top .brandDentalLogo {display:none!important}
+ body.signedIn .top .brand .brandSignature {font-size:clamp(19px,5.6vw,29px)!important}
+ body.signedIn .top #appActions {gap:4px}
+}
+body.signedIn .top #notificationsButton[hidden] {display:none!important}
+/* Match existing booking selectors so legacy large field rules cannot win. */
+dialog.patientRecordEditor.bookingEditor.flootBookingEditor .recordEditorHeading {min-height:44px;padding:6px 0;margin:0 0 10px;border-radius:0}
+.flootBookingEditor #newAppointment {gap:8px;padding-bottom:0}
+.flootBookingEditor #newAppointment>label,.flootBookingEditor .bookingPatientChooser .bookingPatientSearch {gap:4px;font-size:13px;line-height:1.4;margin:0}
+.flootBookingEditor #newAppointment label select,.flootBookingEditor #newAppointment label input:not([type=checkbox]) {min-height:44px;height:44px;padding:8px 10px;font-size:16px;border-radius:12px}
+.flootBookingEditor .bookingTimeSectionTitle {display:none}
+.flootBookingEditor .bookingTimeGroup {margin:0;padding:6px;border:0;background:transparent}
+.flootBookingEditor #newAppointment .bookingNativeSelect select {width:1px!important;height:1px!important;min-height:1px!important}
+/* The week header must stick to the document, outside the horizontal scroller. */
+#workspaceContent .calendarWeekFrame {overflow:visible!important}
+.flootBookingEditor .bookingCareTeam {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.flootBookingEditor .bookingCareTeam>label {margin:0;gap:4px;font-size:13px;line-height:1.4;min-width:0}
+
+/* Review round: compact copy, centered date cursors, controls-only floating header. */
+body.signedIn .top {position:relative!important;top:auto!important;inset-block-start:auto!important;z-index:55!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;transform:none!important;filter:none!important}
+body.signedIn .top #menuButton,body.signedIn.headerOutOfView .top #menuButton {position:fixed!important;inset:auto!important;top:max(12px,env(safe-area-inset-top))!important;right:12px!important;left:auto!important;z-index:55;width:44px;height:44px;background:#fff!important;color:#08777e!important;box-shadow:0 3px 14px #163c4a14}
+body.signedIn .top #appActions {position:fixed!important;inset:auto!important;top:max(12px,env(safe-area-inset-top))!important;left:12px!important;right:auto!important;z-index:55;gap:6px}
+body.signedIn .top #appActions #globalSearch,body.signedIn.headerOutOfView .top #appActions #globalSearch:not([hidden]),body.signedIn .top #appActions #notificationsButton {position:relative!important;inset:auto!important;transform:none!important;background:#fff!important;box-shadow:0 3px 14px #163c4a14}
+body.signedIn .calendarWeekStickyHeader,body.signedIn .calendarDayPlanner .calendarDayTitle {top:68px}
+.flootHomeSection>.homeSectionHead {display:grid;grid-template-columns:1fr;gap:10px}
+.flootHomeSection>.homeSectionHead h2 {margin:0}
+.homeDateNavigator {display:grid;width:100%;justify-items:center;gap:6px}
+.flootHomeDayNav {display:flex!important;flex-wrap:nowrap!important;align-items:center;justify-content:center!important;gap:6px;width:max-content;max-width:100%;margin-inline:auto}
+.flootHomeDayNav .homeDatePicker {flex:0 1 auto;min-width:112px;max-width:180px}
+.flootHomeDayNav .homeDatePicker span:empty {display:none}
+.flootHomeDayNav>button {min-width:40px;padding-inline:7px}
+.flootHomeDayNav>.homeDayCreate {min-width:36px}
+.homeReturnToday {display:flex;justify-content:center;width:100%}
+.homeReturnToday button {min-height:30px;padding:3px 10px;font-size:11px;border:0;background:#edf6f4;color:#126c73;border-radius:10px}
+.homeNumbers>button.homeNumber {text-align:start;font:inherit;cursor:pointer}
+:is(.flootHomeAppointments,.flootHomeTasks,#attendanceShiftDetails) {scroll-margin-top:76px}
+:is(.flootHomeAppointments,.flootHomeTasks,#attendanceShiftDetails):focus {outline:2px solid #89c2c1;outline-offset:4px}
+#tabs>details {border-bottom:1px solid #deebea;padding-block:4px}
+#tabs>details>summary {display:list-item;cursor:pointer;min-height:44px;align-content:center;color:#21636c;font-size:14px;font-weight:800;padding:8px 12px;list-style-position:inside}
+#tabs>details>button {padding-inline-start:28px;font-size:13px}
+#tabs>details[hidden] {display:none!important}
+.loginWelcome {justify-content:flex-start!important;text-align:start!important;direction:ltr}
+.loginWelcome>div {text-align:start!important}
+.exitConfirmDialog {max-width:340px!important}
+.exitConfirmActions {display:flex;gap:10px;padding:12px 0}
+.exitConfirmActions button {flex:1;min-height:44px}
+.srOnly {position:absolute!important;width:1px!important;height:1px!important;padding:0!important;overflow:hidden!important;clip-path:inset(50%)!important;white-space:nowrap!important}
+.premiumHero {min-height:0!important;padding:12px 14px!important;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.premiumHeroHeading {display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin:0!important}
+.premiumHeroBody {margin:0!important;padding:0!important;min-height:0!important}
+.premiumHeroBody>div:empty,.premiumHeroStats {display:none}
+.installAppButton {display:flex;align-items:center;justify-content:center;gap:10px;min-height:48px;width:100%;margin-block:12px 0;border:1px solid #c8e2df;border-radius:14px;background:#f0f8f6;color:#12646c;font-weight:700}
+.installAppButton img {object-fit:contain}
+.installAppButton[hidden] {display:none!important}
+.installInstructions {line-height:1.9}
+
+/* Dr Mai mobile polish — 2026-10-26 */
+.homeDateNavigator{display:flex!important;align-items:center;justify-content:center;gap:7px;max-width:100%;min-width:0;flex-wrap:nowrap;padding-inline:0}
+.homeDateNavigator .flootHomeDayNav{display:flex!important;flex:1 1 auto;min-width:0;align-items:center;justify-content:center;gap:5px;flex-wrap:wrap;overflow:visible}
+.homeDateNavigator .flootHomeDayNav>button{font-size:clamp(10px,2.8vw,13px);min-width:0;white-space:nowrap;padding:7px 8px!important;box-sizing:border-box}
+.homeDateNavigator .homeDatePicker{min-width:0;flex:1 1 116px;text-align:center;padding-inline:2px}
+.homeDateNavigator .homeDatePicker strong{font-size:clamp(11px,3vw,14px)!important;white-space:normal;line-height:1.4}
+.homeDateNavigator .homeDayCreate{flex:0 0 40px;margin:0;min-height:40px;align-self:center;order:2}
+.homeDateNavigator button.homeReturnToday{font-size:11px!important;flex:0 0 auto;max-width:100%;line-height:1.4}
+.homeDateNavigator button.homeReturnToday[hidden]{display:none!important}
+#appDrawer details[data-drawer-group]>summary{display:flex;align-items:center;gap:9px;cursor:pointer;min-height:44px}
+#appDrawer details[data-drawer-group]>summary svg{width:19px;height:19px;flex:none}
+#appDrawer details[data-drawer-group]>button[data-view]{margin-inline-start:20px!important;width:calc(100% - 20px)!important}
+.settingsSection>.settingsAccordion{display:block}
+.settingsAccordion>summary{font-weight:800;padding:14px 12px;cursor:pointer;list-style:revert;min-height:48px}
+.settingsAccordion[open]>summary{margin-bottom:12px;border-bottom:1px solid #dce7eb}
+.settingsSection:has(.settingsAccordion:not([open])){padding-bottom:0!important}
+.calendarHourRow{border-bottom:2px solid #93b0bc!important}
+.calendarHourLabel{border-inline-end:2px solid #93b0bc!important}
+.calendarDayPlanner .calendarAppointmentActions select[data-appointment-status]{display:block!important;min-width:85px!important;min-height:35px;max-width:100%;font-size:12px;position:relative;z-index:2}
+.calendarDayPlanner .calendarAppointment{overflow:visible}
+#notificationsButton{position:relative;overflow:visible!important}
+#whatsappAlertBadge:not([hidden]),.whatsappAlertBadge:not([hidden]){display:flex!important;position:absolute;top:-5px;inset-inline-start:-6px;min-width:19px;height:19px;align-items:center;justify-content:center;border-radius:999px;background:#dc2626;color:#fff;font-size:11px;font-weight:800;border:2px solid #fff;line-height:1;padding:0 3px;z-index:9}
+.patientAlertFilters{display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px;margin:10px 0}
+.patientAlertFilters .check{margin:0;display:flex;align-items:center;gap:6px}
+.patientAlertCard[data-alert-status="sent"] .patientAlertActions,.patientAlertCard[data-alert-status="dismissed"] .patientAlertActions{display:none!important}
+.bookingDurationInput{grid-column:1 / -1}
+.bookingDurationInput input{font-size:1.15rem!important;font-weight:700;min-height:48px}
+@media(max-width:430px){.homeDateNavigator{gap:4px}.homeDateNavigator .flootHomeDayNav>button{padding:6px 7px!important;font-size:11px}.homeDateNavigator .homeDayCreate{flex-basis:38px;min-height:38px}}
+
+/* Invoice procedure choices: open at first tap, never obscure a save button */
+.invoiceLine{position:relative}
+.invoiceLine .invoiceProcedureSuggestions{grid-column:1/-1;display:flex;flex-direction:column;gap:3px;max-height:220px;overflow-y:auto;overscroll-behavior:contain;border:1px solid #c4dde0;border-radius:12px;padding:5px;background:#fff;box-shadow:0 7px 20px #12303c14;z-index:4}
+.invoiceLine .invoiceProcedureSuggestions[hidden]{display:none!important}
+.invoiceProcedureSuggestions button{display:block;min-height:40px;flex:0 0 auto;text-align:start;padding:8px 12px;border:0;border-radius:9px;background:#f4faf9;color:#174956;font-weight:600;white-space:normal}
+.invoiceProcedureSuggestions button:hover,.invoiceProcedureSuggestions button:focus-visible{background:#def2ef;outline:2px solid #168d96}
+.invoiceProcedureSuggestions button[hidden]{display:none!important}
+
+/* Center date actions relative to whole card; place add button to the physical left in RTL */
+.homeDateNavigator{position:relative;justify-content:center!important;min-width:0}
+.homeDateNavigator .flootHomeDayNav{flex:0 1 auto!important;width:max-content;max-width:calc(100% - 44px);margin-inline:auto;justify-content:center!important;flex-wrap:wrap}
+.homeDateNavigator .homeDayCreate{position:absolute!important;inset-inline-end:0;inset-inline-start:auto;top:50%;transform:translateY(-50%);margin:0!important}
+@media(max-width:360px){.homeDateNavigator .flootHomeDayNav{max-width:calc(100% - 38px);gap:3px}}
+
+/* Preserve the direct status action in very short (15-minute) calendar events. */
+.calendarAppointmentCompact .calendarAppointmentActions select[data-appointment-status]{min-height:26px!important;max-height:28px;font-size:10px!important;padding:2px 5px!important;min-width:74px!important}
+.calendarAppointmentCompact .calendarAppointmentActions{display:flex;align-items:center;gap:3px;flex-wrap:wrap;overflow:visible}
+.calendarAppointmentCompact:has(select[data-appointment-status]) .calendarAppointmentOpen{display:none!important}

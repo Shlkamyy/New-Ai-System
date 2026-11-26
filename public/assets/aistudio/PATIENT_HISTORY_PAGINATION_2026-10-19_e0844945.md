@@ -1,0 +1,3 @@
+# Patient history on demand — 19 October 2026
+
+Additional authenticated history pages for appointments, invoices, payments and notes: `GET /api/patient-history?patientId=UUID&section=appointments&offset=150`. Page size 50 (plus one hasMore sentinel). Server enforces patient organization and independent section view permissions; staff without payments_view cannot see invoice paid/outstanding amounts, and admin-authored notes require their separate permission. Uses deterministic ID tie breaks, and the pilot deduplicates appended rows by ID. Profile financial summary remains an all-time aggregate, not a sum of truncated displayed rows. No schema/data imports or Floot data. Needs CI and Railway staging validation; approved Floot UX parity remains a separate requirement.

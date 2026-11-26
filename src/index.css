@@ -1,0 +1,258 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-sans: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'IBM Plex Sans Arabic', monospace;
+    --font-signature: 'Allura', cursive;
+  }
+
+  html, body {
+    overflow-x: clip;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    direction: rtl;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  input, select, textarea, button {
+    font-family: inherit;
+  }
+}
+
+.font-signature {
+  font-family: 'Allura', cursive;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-family: 'IBM Plex Sans Arabic', 'Cairo', sans-serif;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ==========================================================================
+   Dark Mode Master Theme Styles
+   ========================================================================== */
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  background-color: #0b1319 !important;
+  color: #e2e8f0 !important;
+}
+
+/* Scrollbars in Dark Mode */
+html.dark ::-webkit-scrollbar-thumb {
+  background: #223748;
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #324e65;
+}
+
+/* Deep Background Surfaces */
+html.dark .bg-\[\#f4f7f9\] {
+  background-color: #0b1319 !important;
+}
+
+/* Cards & Modals & Popovers (White containers in light mode) */
+html.dark .bg-white {
+  background-color: #121e27 !important;
+}
+
+html.dark .bg-\[\#fafcfc\] {
+  background-color: #0e171f !important;
+}
+
+html.dark .bg-white\/95 {
+  background-color: rgba(18, 30, 39, 0.95) !important;
+}
+
+html.dark .bg-white\/80 {
+  background-color: rgba(24, 38, 50, 0.85) !important;
+}
+
+html.dark .bg-white\/70 {
+  background-color: rgba(24, 38, 50, 0.75) !important;
+}
+
+html.dark .hover\:bg-white\/60:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+html.dark .bg-slate-50,
+html.dark .bg-\[\#f0f6f5\],
+html.dark .bg-\[\#f4f9f8\] {
+  background-color: #16242f !important;
+}
+
+html.dark .bg-slate-100 {
+  background-color: #1b2c39 !important;
+}
+
+/* Hover States */
+html.dark .hover\:bg-slate-50:hover,
+html.dark .hover\:bg-\[\#e4f0ed\]:hover,
+html.dark .hover\:bg-\[\#f0f7f7\]:hover {
+  background-color: #1a2a37 !important;
+}
+
+html.dark .hover\:bg-slate-100:hover {
+  background-color: #223646 !important;
+}
+
+html.dark .hover\:bg-slate-200:hover {
+  background-color: #2b4356 !important;
+}
+
+/* Borders & Dividers */
+html.dark .border-\[\#dce8eb\],
+html.dark .border-\[\#dbe8e8\],
+html.dark .border-\[\#d6e9e5\],
+html.dark .border-\[\#d6e5e5\],
+html.dark .border-\[\#edf3f5\],
+html.dark .border-\[\#cad9db\],
+html.dark .border-slate-200,
+html.dark .border-slate-100 {
+  border-color: #1d2f3d !important;
+}
+
+html.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+html.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #1d2f3d !important;
+}
+
+/* Text & Headings */
+html.dark .text-\[\#172f3d\],
+html.dark .text-slate-900,
+html.dark .text-slate-800 {
+  color: #f1f6fa !important;
+}
+
+html.dark .text-slate-700,
+html.dark .text-slate-600,
+html.dark .text-\[\#235865\],
+html.dark .text-\[\#245b64\] {
+  color: #c9d8e2 !important;
+}
+
+html.dark .text-slate-500,
+html.dark .text-slate-400,
+html.dark .text-\[\#627f8a\],
+html.dark .text-\[\#6b858e\] {
+  color: #839aaa !important;
+}
+
+/* Accent Teal / Medical Brand in Dark Mode */
+html.dark .bg-\[\#e6f4f1\],
+html.dark .bg-\[\#e7f5f2\] {
+  background-color: rgba(20, 184, 166, 0.16) !important;
+}
+
+html.dark .border-\[\#bfe2db\] {
+  border-color: rgba(20, 184, 166, 0.35) !important;
+}
+
+html.dark .text-\[\#087e83\],
+html.dark .text-\[\#145d58\] {
+  color: #2dd4bf !important;
+}
+
+html.dark .hover\:bg-\[\#d5eee8\]:hover {
+  background-color: rgba(20, 184, 166, 0.28) !important;
+}
+
+/* Inputs, Textareas, Selects */
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: #0e171f !important;
+  color: #f1f6fa !important;
+  border-color: #23394a !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #597182 !important;
+}
+
+html.dark input:focus,
+html.dark select:focus,
+html.dark textarea:focus {
+  border-color: #2dd4bf !important;
+  box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.2) !important;
+}
+
+html.dark select option {
+  background-color: #121e27 !important;
+  color: #f1f6fa !important;
+}
+
+/* Table Headers */
+html.dark thead {
+  background-color: #15232e !important;
+  color: #9ab0bf !important;
+  border-color: #1d2f3d !important;
+}
+
+/* Shadows */
+html.dark .shadow-sm {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px -1px rgba(0, 0, 0, 0.4) !important;
+}
+
+html.dark .shadow-md,
+html.dark .shadow-lg,
+html.dark .shadow-xl {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Keyboards & Badges */
+html.dark kbd {
+  background-color: #182733 !important;
+  border-color: #273d4e !important;
+  color: #cbd5e1 !important;
+}
+
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  header, aside, nav, #bottomNav {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .fixed {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+}

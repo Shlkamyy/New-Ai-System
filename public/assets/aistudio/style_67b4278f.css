@@ -1,0 +1,284 @@
+
+:root{--bg:#f3f7f8;--white:#fff;--ink:#17303d;--muted:#718491;--teal:#087e79;--dark:#123744;--border:#e0e8ec;--warn:#985500;--shadow:0 7px 28px #1639460c}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,Tahoma,Arial,sans-serif}button,input,select,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}.app{display:flex;min-height:100vh}.sidebar{background:var(--dark);width:245px;flex-shrink:0;padding:20px 14px;color:white;display:flex;flex-direction:column;gap:5px}.brand{font-size:24px;font-weight:800;padding:8px 13px 21px}.brand small{font-size:11px;font-weight:400;color:#afdbda;display:block;margin-top:6px}.nav{background:transparent;color:#e9f3f5;border:0;padding:12px 14px;text-align:right;border-radius:10px;font-size:14px}.nav:hover,.nav.active{background:#28535d}.bottomnav{margin-top:auto;padding:16px 10px 8px;font-size:11px;line-height:1.8;color:#aac8cf}.main{min-width:0;flex:1;padding:25px;max-width:1700px}.head{display:flex;gap:15px;align-items:flex-start;justify-content:space-between}.head h1{font-size:27px;letter-spacing:-.6px;margin:0}.muted{color:var(--muted)}.head p{margin:7px 0 0;color:var(--muted);font-size:13px}.pill{background:#fff4e2;color:#925f0a;border:1px solid #f7dcab;border-radius:40px;padding:8px 12px;font-size:11px;font-weight:700;white-space:nowrap}.notice{border:1px solid #f0d8a5;background:#fffaf1;color:#765b2f;padding:11px 16px;border-radius:11px;font-size:12px;margin-top:17px}.content{margin-top:22px}.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:20px}.stat,.panel{background:var(--white);border:1px solid var(--border);border-radius:15px;padding:19px;box-shadow:var(--shadow)}.stat .num{font-size:27px;font-weight:800;margin-top:13px;color:#134b50}.stat .sub{font-size:12px;color:var(--muted)}.grid2{display:grid;grid-template-columns:1.35fr 1fr;gap:16px}.sectionTop{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:16px}.sectionTop h2{font-size:17px;margin:0}.toolbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:0 0 18px}.field{background:white;border:1px solid #d6e1e6;border-radius:10px;padding:11px 12px;color:var(--ink);min-height:42px;min-width:0;max-width:100%}.field:focus{outline:2px solid #8bd4ce;outline-offset:1px}.grow{flex:1;min-width:160px}.btn{padding:10px 14px;border-radius:9px;border:1px solid #d8e3e6;background:white;color:var(--ink);font-weight:650;font-size:13px;display:inline-flex;align-items:center;gap:6px;justify-content:center}.btn:hover{filter:brightness(.97)}.btn.primary{background:var(--teal);border-color:var(--teal);color:white}.btn.danger{background:#fff3f2;border-color:#f3d1d0;color:#ac3f39}.btn.small{padding:6px 9px;font-size:12px}.btn.active{background:#e6f5f4;color:#096f69;border-color:#b2d7d4}.btn.outline{border-color:var(--teal);color:var(--teal)}.miniRow{padding:14px 0;border-bottom:1px solid #e8eff2;display:flex;align-items:center;gap:11px;justify-content:space-between}.miniRow:last-child{border:0}.itemTitle{font-size:14px;font-weight:650}.itemSub{color:var(--muted);font-size:12px;margin-top:5px}.time{font-weight:800;color:var(--teal);direction:ltr;font-size:15px;white-space:nowrap}.rowActions{display:flex;gap:5px;align-items:center;flex-wrap:wrap}.tableWrap{background:white;border:1px solid var(--border);border-radius:13px;overflow-x:auto}table{width:100%;border-collapse:collapse;white-space:nowrap;text-align:right}th{background:#fafcfc;font-size:12px;font-weight:700;color:#617c8b}td,th{padding:12px 13px;border-bottom:1px solid var(--border);text-align:right}tr:last-child td{border-bottom:0}td{font-size:13px}.link{border:0;background:none;color:#087e79;padding:2px;text-decoration:underline;font-weight:700;cursor:pointer}.tag{display:inline-block;padding:4px 9px;border-radius:20px;background:#edf6f5;color:#247c77;font-size:11px;font-weight:700}.tag.orange{background:#fff1df;color:#ad6a07}.tag.red{background:#fff1ef;color:#a54d3e}.empty{padding:34px;text-align:center;color:var(--muted);font-size:14px}.pagination{display:flex;gap:9px;align-items:center;justify-content:space-between}.stack{display:grid;gap:15px}.formgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.formgrid label{font-size:12px;color:#567180;font-weight:650;display:grid;gap:7px}.formgrid label.full{grid-column:1/-1}.formgrid .field{width:100%}.dialog{border:0;border-radius:16px;box-shadow:0 20px 70px #0e354458;width:min(95vw,660px);max-height:89vh;padding:0;color:var(--ink)}.dialog::backdrop{background:#082a3d99}.dialogTop{padding:21px 23px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px}.dialogTop h2{font-size:18px;margin:0}.dialogBody{padding:22px;max-height:64vh;overflow-y:auto}.dialogFoot{display:flex;gap:9px;padding:15px 23px;border-top:1px solid var(--border);justify-content:flex-start}.filterPanel{background:white;border:1px solid var(--border);padding:15px;border-radius:11px;margin-bottom:17px}.filterPanel summary{font-weight:750;font-size:13px;cursor:pointer;margin-bottom:8px}.checkRow{display:flex;gap:11px;align-items:center}.checkRow input{accent-color:var(--teal);width:18px;height:18px}.strike{text-decoration:line-through;color:#8a9da7}.calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}.calHead{padding:7px 1px;text-align:center;font-size:11px;color:var(--muted)}.dayCell{border:1px solid var(--border);border-radius:9px;min-height:84px;background:#fff;text-align:right;padding:9px;font-size:12px}.dayCell.today{border-color:#11a6a0;background:#eefbfa}.dayCell.muted{opacity:.4}.dots{display:flex;gap:3px;flex-wrap:wrap;margin-top:8px}.dot{background:#d9f0ee;color:#096963;border-radius:5px;padding:2px 4px;font-size:10px;max-width:100%;overflow:hidden;text-overflow:ellipsis}.twoBoxes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}.settingList{display:flex;gap:9px;flex-wrap:wrap}.avatar{height:38px;width:38px;border-radius:11px;background:#e5f5f3;display:grid;place-items:center;color:var(--teal);font-weight:800}.toast{position:fixed;bottom:20px;left:20px;z-index:40;background:#173d49;color:white;border-radius:10px;padding:12px 18px;font-size:13px;display:none;box-shadow:var(--shadow)}.footer{font-size:12px;color:var(--muted);margin:24px 0 0}.floatBtn{position:fixed;bottom:20px;right:20px;z-index:8;border-radius:50%;height:50px;width:50px;background:var(--teal);border:0;color:white;font-size:28px;box-shadow:0 9px 32px #096e6a66}.demoBanner{font-size:12px;padding:8px;color:#6c7480}.nowrap{white-space:nowrap}.wide{width:100%}.price{direction:ltr;unicode-bidi:embed}.gap8{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+@media(max-width:950px){.sidebar{width:185px}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.grid2{grid-template-columns:1fr}.main{padding:18px}}
+@media(max-width:710px){.app{display:block}.sidebar{width:100%;flex-direction:row;align-items:center;overflow-x:auto;gap:3px;padding:10px}.brand{font-size:16px;white-space:nowrap;padding:6px}.brand small,.bottomnav{display:none}.nav{font-size:12px;white-space:nowrap;padding:11px 10px}.main{padding:16px 12px 65px}.head h1{font-size:21px}.pill{font-size:9px;padding:6px}.stats{gap:8px}.stat,.panel{padding:13px}.stat .num{font-size:23px}.formgrid,.twoBoxes{grid-template-columns:1fr}.dayCell{padding:5px;min-height:65px}.dot{font-size:8px}.calendar{gap:3px}.dialogBody{padding:15px}.toolbar .grow{min-width:130px}.floatBtn{bottom:15px;right:15px}.head p{font-size:12px}}
+
+/* Appointment patient picker + financial filters */
+.suggestions{display:grid;gap:2px;background:#fff;border:1px solid var(--border);border-radius:11px;margin-top:5px;max-height:238px;overflow-y:auto;box-shadow:0 8px 22px #1237441a;position:relative;z-index:5}
+.suggestions[hidden]{display:none}
+.suggestion{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 13px;text-align:right;border:0;background:white;color:var(--ink);width:100%;cursor:pointer;font-size:13px}
+.suggestion:hover,.suggestion:focus-visible{background:#eaf6f5;outline:none}
+.suggestion+ .suggestion{border-top:1px solid var(--border)}
+.suggestion span{font-size:12px;color:var(--muted);white-space:nowrap}
+.suggestion.new{color:var(--teal);font-weight:800;background:#f2fafa}
+.filterGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.filterField{display:grid;gap:5px;font-size:12px;color:var(--muted)}
+.filterField .field{width:100%}
+@media(max-width:710px){.filterGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.suggestion{font-size:12px}}
+
+/* Floot development-reference navigation, mobile-first. */
+:root{--bg:#F2F6F8;--ink:#162736;--teal:#087F80;--dark:#12303C;--border:#D8E4E8;--muted:#6E8390;--white:#fff;--shadow:0 6px 24px #12303c12}
+body{font-family:"Cairo",Tahoma,Arial,sans-serif}
+.time,.num,.price,input[type=number],input[type=time]{font-family:"IBM Plex Sans","Cairo",sans-serif}
+.stat,.panel{border-radius:19px}
+.sidebar{background:#12303C}
+.mobileTopbar,.mobileBottomNav,.drawerOverlay,.drawerClose{display:none}
+.quickMenu{position:fixed;z-index:18;bottom:89px;right:20px;width:min(295px,calc(100vw - 32px));padding:9px;background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:0 14px 55px #12303c29;display:grid;gap:2px}
+.quickMenu[hidden]{display:none}
+.quickMenu button{display:block;width:100%;text-align:right;padding:12px 14px;border:0;border-radius:9px;background:white;color:var(--ink);cursor:pointer;font-size:13px;font-weight:700}
+.quickMenu button:hover,.quickMenu button:focus-visible{background:#e6f5f4;outline:none;color:#087F80}
+.desktopAdd{display:grid;place-items:center}
+@media(max-width:710px){
+ html,body{overflow-x:hidden}
+ .mobileTopbar{height:58px;display:flex;align-items:center;justify-content:space-between;gap:10px;position:sticky;top:0;z-index:12;background:white;border-bottom:1px solid var(--border);padding:6px 14px}
+ .mobileBrand{font-family:"IBM Plex Sans",sans-serif;font-size:20px;letter-spacing:-.5px;color:var(--dark)}
+ .mobileTopActions{display:flex;align-items:center;gap:12px}
+ .iconBtn{height:35px;min-width:35px;border:0;background:#f0f6f7;color:var(--dark);border-radius:10px;font-size:21px;display:grid;place-items:center}
+ .profileAvatar{height:33px;width:33px;display:grid;place-items:center;border-radius:100%;background:#dff2f0;color:#087f80;font-size:11px;font-weight:800;font-family:"IBM Plex Sans",sans-serif}
+ .app{display:block}
+ .sidebar{display:flex;position:fixed;top:0;right:0;bottom:0;z-index:26;height:100dvh;width:min(320px,85vw);padding:68px 13px 25px;flex-direction:column;align-items:stretch;gap:4px;overflow-y:auto;overflow-x:hidden;background:var(--dark);box-shadow:-20px 0 55px #08232f25;transform:translateX(106%);transition:transform .23s ease;visibility:hidden}
+ .sidebar.open{transform:translateX(0);visibility:visible}
+ .sidebar .brand{display:block;position:absolute;top:14px;right:14px;font-size:24px;padding:0 8px;color:white}
+ .sidebar .brand small{display:block;font-size:11px}
+ .sidebar .nav{display:block;width:100%;text-align:right;white-space:normal;padding:12px 13px;font-size:13px}
+ .sidebar .bottomnav{display:block;margin-top:auto}
+ .drawerClose{display:block;position:absolute;top:18px;left:17px;width:33px;height:33px;border:0;border-radius:8px;background:#ffffff16;color:white;font-size:18px}
+ .drawerOverlay:not([hidden]){display:block;position:fixed;inset:0;z-index:25;background:#062a3b91}
+ .main{padding:19px 13px calc(110px + env(safe-area-inset-bottom));}
+ .head{gap:7px}
+ .head h1{font-size:22px}
+ .head .pill{font-size:9px}
+ .mobileBottomNav{display:grid;position:fixed;bottom:0;left:0;right:0;z-index:16;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;height:calc(70px + env(safe-area-inset-bottom));padding:0 5px env(safe-area-inset-bottom);background:white;border-top:1px solid #d8e4e8;box-shadow:0 -6px 28px #12303c13;direction:rtl}
+ .bottomNavItem{display:flex;min-width:0;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:56px;padding:3px;border:0;background:transparent;color:#718491;font-family:"Cairo",sans-serif;font-size:10px;font-weight:800;white-space:nowrap}
+ .bottomNavItem.active{color:#087F80}
+ .bottomIcon{font-size:22px;line-height:1.1;font-family:Arial,sans-serif}
+ .centerAdd{border:5px solid white;border-radius:50%;width:64px;height:64px;justify-self:center;align-self:center;background:#087F80;color:white;font-size:35px;font-weight:300;line-height:1;box-shadow:0 6px 18px #087f8055;transform:translateY(-18px);font-family:Arial,sans-serif}
+ .centerAdd[aria-expanded=true]{background:#12303c}
+ .desktopAdd{display:none}
+ .quickMenu{bottom:calc(80px + env(safe-area-inset-bottom));right:50%;transform:translateX(50%);max-height:60dvh;overflow-y:auto}
+ .dialog{z-index:35}
+ .dialog::backdrop{z-index:34}
+ .toast{bottom:calc(78px + env(safe-area-inset-bottom))}
+}
+@media(min-width:711px){.sidebar .drawerClose{display:none}}
+@media(prefers-reduced-motion:reduce){.sidebar{transition:none}}
+
+/* Latest ClinicFlow UX reference — compact dashboard and mobile sheets */
+.welcomeBanner{background:linear-gradient(118deg,#12303C,#087F80);border-radius:19px;padding:18px 20px;margin:0 0 17px;color:#fff}
+.welcomeBanner h2{font-size:20px;margin:0 0 4px}.welcomeBanner p{font-size:12px;margin:0;opacity:.87}
+.compactLine{display:flex;align-items:center;gap:9px;border-bottom:1px solid var(--border);padding:8px 4px;min-height:58px}
+.compactLine:last-child{border-bottom:0}
+.compactLine.apptClick{cursor:pointer;border-radius:7px}
+.compactLine.apptClick:hover{background:#f1faf9}
+.compactTime{width:68px;flex-shrink:0;color:var(--teal);font:700 13px "IBM Plex Sans",sans-serif;direction:ltr;text-align:center}
+.compactInfo{min-width:0;flex:1}
+.compactTitle{font-size:13px;line-height:1.4;font-weight:700;white-space:normal;overflow-wrap:anywhere}
+.compactMeta{font-size:11px;color:var(--muted);line-height:1.6}
+.compactStatus{font-size:11px;padding:5px;width:95px;min-height:34px;flex-shrink:0}
+.compactTaskCheck{height:21px;width:21px;flex-shrink:0;accent-color:var(--teal);cursor:pointer}
+.todayTick{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700}
+.goodMessage{color:#11684b;background:#e9f7ef;padding:12px;border-radius:9px;font-size:13px;font-weight:800}
+.nestedDialog{z-index:99}
+.modalActions{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:710px){
+ .welcomeBanner{padding:13px 14px}.welcomeBanner h2{font-size:17px}
+ .compactLine{gap:6px;padding:6px 3px;min-height:52px}
+ .compactTime{width:57px;font-size:12px}
+ .compactMeta{font-size:10px}
+ .compactStatus{width:84px;font-size:10px}
+ .dialog{position:fixed;bottom:0;top:auto;left:0;right:0;width:100%;max-width:100%;max-height:95dvh;margin:0;padding:0;border-radius:21px 21px 0 0}
+ .dialogBody{max-height:calc(95dvh - 138px);overscroll-behavior:contain}
+ .dialogFoot{position:sticky;bottom:0;background:#fff;padding:12px 16px}
+ .dialogFoot .btn{min-height:43px}
+ .quickMenu button{min-height:46px}
+}
+
+.dateQuick{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+.dateQuick .btn{font-size:11px;min-height:35px}
+#extraQuickDays{display:contents}
+.palmerGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.palmerQuadrant{border:1px solid var(--border);border-radius:11px;padding:12px;background:#f9fcfc}
+.palmerQuadrant strong{display:block;font:700 13px "IBM Plex Sans",sans-serif;margin-bottom:9px;color:var(--dark)}
+.palmerTeeth{display:flex;flex-wrap:wrap;gap:5px}
+.palmerTooth{width:33px;height:33px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--ink);font:700 13px "IBM Plex Sans",sans-serif}
+.palmerTooth.chosen{background:var(--teal);color:#fff;border-color:var(--teal)}
+@media(max-width:710px){.palmerGrid{grid-template-columns:1fr 1fr;gap:7px}.palmerQuadrant{padding:9px}.palmerTooth{width:29px;height:30px}}
+
+/* Multi-procedure invoice editor — touch-friendly rows */
+.invoiceSubheading{font-size:14px;color:var(--dark);margin:4px 0 10px}
+.invoiceItem{background:#f8fbfc;border:1px solid var(--border);border-radius:13px;padding:12px;margin-bottom:10px}
+.invoiceItemHead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.invoiceItemHead strong{font-size:13px}
+.invoiceItemFields{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;align-items:end}
+.invoiceItemFields label{min-width:0}
+.invoiceLineTotal{font-size:11px;color:var(--muted);grid-column:1/-1;display:flex;justify-content:flex-end;gap:7px}
+.invoiceLineTotal strong{color:var(--dark)}
+.invoiceSummary{border-radius:12px;padding:14px;background:#e8f0f1;border:1px solid var(--border);display:grid;gap:7px}
+.invoiceSummary>div{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:13px}
+.invoiceSummary>div.summaryNet{font-weight:800;font-size:15px;border-block:1px solid #ccdadd;padding:8px 0}
+@media(max-width:710px){
+ .invoiceItem{padding:10px;margin-bottom:8px}
+ .invoiceItemFields{grid-template-columns:1fr 1fr;gap:8px}
+ .invoiceItemFields label:first-child{grid-column:1/-1}
+ .invoiceItemFields .field{min-width:0;width:100%}
+ .invoiceSummary{padding:11px}
+}
+
+/* 2026-10 ClinicFlow mobile usability: predictable filter accordion layout */
+.financeFilters{display:grid;grid-template-columns:1fr;gap:10px;margin:12px 0}
+.filterPanel{display:block;min-width:0;position:relative;z-index:auto;overflow:visible;margin:0 0 10px;border-radius:14px;border:1px solid #dbe6ea;background:#fff;padding:0;box-shadow:0 3px 14px #12303c08}
+.filterPanel>summary{position:relative;display:flex;align-items:center;gap:9px;cursor:pointer;list-style:none;font-size:13px;line-height:1.5;font-weight:800;color:#173c46;padding:12px 15px;margin:0;background:#fafdfd;border-radius:14px;user-select:none}
+.filterPanel>summary::-webkit-details-marker{display:none}
+.filterPanel>summary:before{content:"⌄";display:inline-grid;place-items:center;flex-shrink:0;color:#087f80;background:#e6f3f2;width:25px;height:25px;border-radius:9px;font:800 16px "IBM Plex Sans",sans-serif;transition:transform .17s}
+.filterPanel[open]>summary{border-bottom:1px solid var(--border);border-radius:14px 14px 0 0;background:#eefaF9}
+.filterPanel[open]>summary:before{transform:rotate(180deg)}
+.filterPanel>.filterGrid,.filterPanel>.toolbar,.filterPanel>.filterGroups{padding:12px 15px}
+.filterPanel>.toolbar{margin:0}
+.filterGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:12px;min-width:0;align-items:end}
+.filterGrid>*{min-width:0}
+.filterField{min-width:0;display:flex;flex-direction:column;gap:6px;overflow:visible}
+.filterField .field{width:100%;min-width:0;box-sizing:border-box}
+.filterGroups{display:grid;grid-template-columns:1fr;gap:9px}
+.filterGroups>.filterPanel{margin:0}
+.financeFilters>.filterPanel{margin:0}
+.patientActions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:white;border:1px solid var(--border);border-radius:15px;padding:11px;margin-bottom:15px}
+.patientActionsMain,.patientActionsManage{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.patientActionsManage{margin-inline-start:auto}
+.patientActions .btn{min-height:39px;font-size:12px}
+.patientBadges{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:0 0 18px;padding:8px 12px;background:#fff;border:1px solid var(--border);border-radius:14px}
+.patientBadges .btn{font-size:11px}
+.patientHistoryTabs{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin:8px 0 13px}
+.patientHistoryTabs .btn{font-size:11px;min-height:35px;padding:7px 11px}
+.dashboardDayNav{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:9px;background:white;border:1px solid var(--border);border-radius:14px;padding:10px;margin:11px 0 15px}
+.dashboardDayNav strong{color:#12303c;font-size:14px;text-align:center}
+.attendanceQuick{margin-bottom:15px;border-inline-start:4px solid #087f80}
+.demoTag{font-size:10px;color:#647d88;padding:5px 7px;border-radius:8px;background:#eaf0f2}
+.weekdaySettings{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin-bottom:16px}
+.weekdaySettings label,.settingHours label{display:grid;gap:6px;font-size:12px;font-weight:700}
+.settingsSubheading{font-size:13px;color:#173d47}
+.patientContacts{display:inline-flex;gap:5px;align-items:center;white-space:nowrap}
+.contactAction{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border-radius:10px;width:35px;height:35px;background:#e8f5f2;color:#087f80;font-size:15px;border:1px solid #cae4df}
+.contactAction:focus-visible{outline:2px solid #087f80}
+.globalSearchButton{display:inline-flex;justify-content:center;align-items:center;border-radius:11px;border:1px solid var(--border);width:37px;height:37px;background:white;color:#087f80;font-size:20px}
+.globalSearchPanel{position:fixed;z-index:24;top:65px;right:clamp(10px,4vw,90px);width:min(430px,calc(100vw - 20px));max-height:73dvh;overflow:auto;background:white;box-shadow:0 22px 55px #12303c36;border:1px solid var(--border);border-radius:16px;padding:14px}
+.globalSearchPanel[hidden]{display:none}
+.globalSearchPanel .searchMatches{margin-top:12px;display:grid;gap:5px}
+.globalSearchPanel .searchMatches button{width:100%;border:0;border-radius:10px;background:#f3f8f8;text-align:right;padding:10px;cursor:pointer}
+.globalSearchPanel .searchMatches button:hover{background:#e1f4f0}
+.globalSearchToolbar{display:flex;gap:8px;align-items:center}
+.globalSearchToolbar input{flex:1;width:0}
+.modalSectionActions{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.audioPreview{display:flex;flex-direction:column;gap:6px;min-width:0}
+.audioPreview audio{max-width:100%;width:260px}
+@media(max-width:710px){
+ .filterPanel>summary{padding:12px}
+ .filterPanel>.filterGrid,.filterPanel>.toolbar,.filterPanel>.filterGroups{padding:10px}
+ .filterGrid{grid-template-columns:1fr}
+ .patientActions{padding:9px;gap:7px}
+ .patientActionsMain,.patientActionsManage{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+ .patientActionsManage{grid-template-columns:repeat(2,minmax(0,1fr));margin:0}
+ .patientActions .btn{white-space:normal;min-width:0;min-height:42px;padding:8px 5px}
+ .dashboardDayNav{gap:5px;justify-content:space-between}
+ .dashboardDayNav strong{order:-1;width:100%;font-size:13px}
+ .weekdaySettings{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .globalSearchPanel{top:58px;right:10px}
+ .patientHistoryTabs{gap:4px}
+ .patientHistoryTabs .btn{font-size:10px;padding:6px}
+}
+@media(max-width:390px){.patientActionsMain{grid-template-columns:repeat(2,minmax(0,1fr))}.patientContacts{gap:3px}}
+
+.headActions{display:flex;align-items:center;gap:11px;min-width:0}
+.headActions .globalSearchButton{flex-shrink:0}
+.tagChooser{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.tagOption{display:flex;align-items:center;gap:8px;border:1px solid var(--border);padding:12px;border-radius:11px;background:#f8fbfb;font-size:13px;cursor:pointer}
+.tagOption input{height:18px;width:18px;accent-color:#087f80}
+.modalSectionActions .btn{min-height:42px}
+#voicePreview{border:1px dashed var(--border);border-radius:12px;padding:10px;background:#f7fbfb}
+#voicePreview audio{max-width:100%;width:100%;margin-top:6px}
+#globalSearchResults strong{font-size:13px}
+@media(max-width:710px){.headActions .globalSearchButton{display:none}.headActions .pill{font-size:10px}.tagChooser{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.calendarSelectDay{border:0;background:transparent;color:inherit;font-weight:800;cursor:pointer;padding:4px 7px;border-radius:7px}
+.calendarSelectDay:hover,.calendarSelectDay:focus-visible{background:#dbf3ef;color:#087f80;outline:2px solid #20a69d}
+.slotList{display:grid;gap:5px}
+.slotRow{display:flex;align-items:center;gap:10px;border:1px solid var(--border);padding:8px 11px;border-radius:10px;min-width:0}
+.slotRow>strong{min-width:65px;direction:ltr;text-align:center;font:700 13px "IBM Plex Sans",sans-serif;color:#087f80}
+.slotPatients{flex:1;min-width:0;overflow-wrap:anywhere;font-size:12px}
+.slotRow .btn{padding:7px 10px;min-height:32px}
+.daySlots{margin-top:15px}
+@media(max-width:710px){.daySlots{padding:12px}.slotRow{padding:7px 5px;gap:5px}.slotRow>strong{font-size:11px;min-width:58px}.slotPatients{font-size:11px}.slotRow .btn{padding:5px 7px;font-size:11px}}
+
+.modalClose{border:1px solid #d8e4e8;width:32px;height:32px;min-width:32px;padding:0!important;border-radius:10px!important;font-size:16px!important;background:#f4f8f9!important;color:#17414b!important}
+.modalClose:hover{background:#e4f2f2!important}
+
+/* Calendar V2 — daily first, with compact 7-day and month views */
+.calendarControls{display:grid;gap:11px;margin:0 0 15px}
+.calendarMode{display:flex;gap:7px;flex-wrap:wrap}
+.calendarMode>.btn{min-width:74px}
+.calendarMode>.btn.active{background:#087F80;border-color:#087F80;color:#fff}
+.calendarPager{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff;border:1px solid #D8E4E8;border-radius:14px;padding:9px 12px}
+.calendarPager>strong{min-width:0;flex:1;text-align:center;line-height:1.6;font-size:13px;color:#12303C}
+.calendarSelectors{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.calendarSelectors label{display:grid;gap:5px;font-size:12px;color:#6E8390;font-weight:700;min-width:0}
+.calendarSelectors .field{width:100%;min-width:0}
+.calendarWeekStrip{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;background:#fff;border:1px solid #D8E4E8;padding:9px;border-radius:15px;margin-bottom:13px}
+.calendarWeekDay{display:grid;gap:4px;justify-items:center;min-width:0;background:#f5fafb;border:1px solid #D8E4E8;border-radius:11px;padding:8px 3px;font:inherit;cursor:pointer;color:#162736}
+.calendarWeekDay span{font-size:11px;color:#6E8390}
+.calendarWeekDay strong{font:800 17px "IBM Plex Sans",sans-serif}
+.calendarWeekDay small{font-size:9px;line-height:1.4;color:#6E8390;text-align:center;overflow-wrap:anywhere}
+.calendarWeekDay.active{border-color:#087F80;background:#e7f5f3;color:#087F80}
+.dayAgenda{min-width:0}
+.dayAgenda .sectionTop{flex-wrap:wrap}
+.slotRow{align-items:flex-start}
+.slotRow>strong{padding-top:7px}
+.calendarAppointment{padding:8px 10px;cursor:pointer;border:1px solid #dbe7e9;border-radius:10px;background:#fff;margin:3px 0 7px;min-width:0}
+.calendarAppointment:hover,.calendarAppointment:focus-visible{background:#f1fbfa;border-color:#20A69D;outline:none}
+.calendarAppointmentHead{display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:11px;margin-bottom:4px}
+.calendarAppointmentHead strong{color:#087F80;font:700 12px "IBM Plex Sans",sans-serif}
+.calendarAppointment .tag{font-size:9px;padding:3px 7px}
+.calendarAppointmentMain{display:flex;flex-direction:column;align-items:flex-start;gap:1px;font-size:11px}
+.calendarAppointmentMain>span{font-size:10px;color:#6E8390}
+.outsideHours{border:1px dashed #D8E4E8;border-radius:12px;padding:10px;margin-top:10px}
+.outsideHours h3{font-size:12px;color:#12303c;margin:0 0 9px}
+.monthCalendar{margin-bottom:14px;overflow:hidden}
+.dayCell.selected{background:#eaf8f5;outline:2px solid #087F80;outline-offset:-2px}
+@media(max-width:710px){
+ .calendarSelectors{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .calendarSelectors label:first-child{grid-column:1/-1}
+ .calendarPager{flex-wrap:wrap;justify-content:center;gap:5px}
+ .calendarPager>strong{order:-1;flex-basis:100%;font-size:12px}
+ .calendarMode{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+ .calendarMode>.btn{min-width:0}
+ .calendarWeekStrip{gap:3px;padding:5px}
+ .calendarWeekDay{padding:8px 1px;gap:5px}
+ .calendarWeekDay strong{font-size:14px}
+ .calendarWeekDay span{font-size:9px}
+ .calendarWeekDay small{font-size:8px}
+ .slotRow{gap:4px;padding:7px 5px}
+ .slotRow .btn{font-size:10px;padding:6px}
+ .calendarAppointment{padding:7px 5px}
+ .calendarAppointmentMain{font-size:10px}
+ .monthCalendar{padding:9px}
+ .monthCalendar .calendar{gap:2px}
+ .monthCalendar .dayCell{min-height:58px;padding:3px}
+ .monthCalendar .calHead{font-size:9px}
+ .monthCalendar .dot{font-size:8px}
+}
+
+/* Task planner date navigation and overdue section */
+.taskDayPager{display:flex;gap:9px;justify-content:space-between;align-items:center;padding:10px 13px;border-radius:14px;border:1px solid #D8E4E8;background:#fff;margin:4px 0 15px}
+.taskDayPager strong{font-size:13px;color:#12303C;text-align:center}
+.taskOverdue{padding:10px;margin-bottom:13px}
+.taskOverdue .filterPanel{margin:0;border:0;box-shadow:none}
+.taskOverdue .miniRow{border-bottom:1px solid #e5ecee}
+.taskOverdue .miniRow:last-child{border:0}
+.taskOverdue .checkRow{min-width:0;flex:1}
+.taskOverdue .tag{font-size:10px;margin-inline-start:5px}
+@media(max-width:710px){
+ .taskDayPager{gap:5px;padding:8px}
+ .taskDayPager strong{font-size:12px}
+ .taskOverdue{padding:5px}
+ .taskOverdue .miniRow{gap:5px;flex-wrap:wrap}
+ .taskOverdue .rowActions{margin-inline-start:auto}
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Dr Mai Kassem — ClinicFlow",
+  "description": "نظام إدارة العيادات المتكامل لدكتور محمد شلقامي (Dr Shlkamy): المواعيد والتقويم، ملفات وسجلات المرضى، الروشتات الطبية، الفواتير والمدفوعات، بصمة الحضور، ورسائل واتساب.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

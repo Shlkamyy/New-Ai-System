@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#123744"/>
+<meta name="description" content="ClinicFlow web prototype. Fictional data only; not a clinical production system."/>
+<title>ClinicFlow — Web Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/style.css"/>
+</head>
+<body>
+<div class="mobileTopbar">
+  <button id="drawerToggle" class="iconBtn" type="button" aria-label="فتح القائمة" aria-expanded="false">☰</button>
+  <strong class="mobileBrand">ClinicFlow</strong>
+  <div class="mobileTopActions">
+    <button type="button" class="globalSearchButton" data-action="toggle-global-search" aria-label="بحث شامل">⌕</button>
+    <button id="notificationButton" class="iconBtn" type="button" aria-label="الإشعارات">♧</button>
+    <span class="profileAvatar" title="نسخة تجريبية">CF</span>
+  </div>
+</div>
+<div id="drawerOverlay" class="drawerOverlay" hidden></div>
+<div class="app">
+<aside class="sidebar" id="mainDrawer" aria-label="قائمة التنقل">
+  <div class="brand">ClinicFlow<small>إدارة العيادات • نسخة تجريبية</small></div>
+  <button id="drawerClose" type="button" class="drawerClose" aria-label="إغلاق القائمة">✕</button>
+  <button class="nav active" data-page="dashboard">🏠 الرئيسية</button>
+  <button class="nav" data-page="appointments">📅 المواعيد</button>
+  <button class="nav" data-page="patients">🦷 المرضى</button>
+  <button class="nav" data-page="crm">💬 علاقة العملاء CRM</button>
+  <button class="nav" data-page="tasks">✅ المهام</button>
+  <button class="nav" data-page="calendar">🗓️ التقويم</button>
+  <button class="nav" data-page="invoices">🧾 الفواتير</button>
+  <button class="nav" data-page="payments">💳 المدفوعات</button>
+  <button class="nav" data-page="expenses">💸 المصروفات</button>
+  <button class="nav" data-page="procedures">🩺 الإجراءات</button>
+  <button class="nav" data-page="attendance">📍 الحضور</button>
+  <button class="nav" data-page="reports">📊 التقارير</button>
+  <button class="nav" data-page="settings">⚙️ الإعدادات</button>
+  <div class="bottomnav">DEMO / بروتوتايب<br/>بيانات محفوظة في متصفحك فقط</div>
+</aside>
+<main class="main">
+  <header class="head"><div><h1 id="pageTitle">لوحة التحكم</h1><p id="pageDesc">إدارة العيادة من مكان واحد</p></div><div class="headActions"><button type="button" class="globalSearchButton" data-action="toggle-global-search" aria-label="بحث شامل">⌕</button><span class="pill">نسخة تجريبية • بيانات وهمية</span></div></header>
+  <div class="notice">⚠️ للتجربة فقط: لا تدخل أسماء أو أرقام أو بيانات مرضى حقيقية. البيانات مخزنة محليًا في هذا المتصفح وغير متزامنة بين الأجهزة.</div>
+  <div id="content" class="content"></div>
+  <p class="footer">ClinicFlow Web Test — نسخة مستقلة عن التطبيق الموجود على Floot. بعض وظائف الإنتاج مثل تسجيل الدخول والتزامن والتحقق الجغرافي لم تُنفّذ بعد.</p>
+</main>
+</div>
+<nav class="mobileBottomNav" aria-label="التنقل السريع">
+ <button class="bottomNavItem" data-page="today-invoices" type="button" aria-label="فواتير اليوم"><span class="bottomIcon">▤</span><span>فواتير اليوم</span></button>
+ <button class="bottomNavItem" data-page="patients" type="button" aria-label="المرضى"><span class="bottomIcon">♙</span><span>المرضى</span></button>
+ <button id="quickAdd" class="centerAdd" type="button" aria-label="قائمة الإضافة" aria-expanded="false">+</button>
+ <button class="bottomNavItem" data-page="calendar" type="button" aria-label="المواعيد"><span class="bottomIcon">▦</span><span>المواعيد</span></button>
+ <button class="bottomNavItem active" data-page="dashboard" type="button" aria-label="الرئيسية"><span class="bottomIcon">⌂</span><span>الرئيسية</span></button>
+</nav>
+<button id="quickAddDesktop" class="floatBtn desktopAdd" type="button" title="إضافة جديدة" aria-label="قائمة الإضافة" aria-expanded="false">+</button>
+<div id="quickMenu" class="quickMenu" hidden role="group" aria-label="إضافة جديدة">
+ <button type="button" data-action="add-patient">♙ إضافة مريض جديد</button>
+ <button type="button" data-action="add-appt">▦ إضافة موعد جديد</button>
+ <button type="button" data-action="add-invoice">▤ إضافة فاتورة جديدة</button>
+ <button type="button" data-action="add-payment">▣ إضافة دفع جديد</button>
+ <button type="button" data-action="add-expense">↙ إضافة مصروف جديد</button>
+ <button type="button" data-action="add-task">☑ إضافة مهمة جديدة</button>
+</div>
+<div id="globalSearchPanel" class="globalSearchPanel" hidden role="dialog" aria-label="البحث الشامل">
+  <div class="globalSearchToolbar">
+    <input id="globalSearchInput" class="field" type="search" autocomplete="off" placeholder="ابحث عن مريض أو ملاحظة..."/>
+    <button type="button" class="btn small" data-action="close-global-search" aria-label="إغلاق البحث">✕</button>
+  </div>
+  <div class="itemSub">النتائج هنا من بيانات المتصفح التجريبية فقط. عرض الملاحظات يحتاج صلاحيات Backend في النسخة الحقيقية.</div>
+  <div id="globalSearchResults" class="searchMatches"></div>
+</div>
+<dialog id="editor" class="dialog" aria-label="نموذج التعديل"></dialog>
+<dialog id="nestedEditor" class="dialog nestedDialog" aria-label="نموذج إضافي"></dialog>
+<div id="toast" class="toast" role="status"></div>
+<script src="/app.js" defer></script>
+</body>
+</html>

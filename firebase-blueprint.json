@@ -1,0 +1,459 @@
+{
+  "entities": {
+    "ClinicConfig": {
+      "title": "ClinicConfig",
+      "description": "General clinic working hours, weekday rules, referral sources, patient tags, and required fields configuration.",
+      "type": "object",
+      "properties": {
+        "ownerEmail": { "type": "string", "maxLength": 120 },
+        "allowedEmails": { "type": "array" },
+        "clinicStartHour": { "type": "number" },
+        "clinicEndHour": { "type": "number" },
+        "weekdaySettings": { "type": "array" },
+        "referralSources": { "type": "array" },
+        "patientTags": { "type": "array" },
+        "patientRequiredFields": { "type": "object" },
+        "staffAlertSettings": { "type": "object" },
+        "expenseCategories": { "type": "array" },
+        "patientFollowUpStatuses": { "type": "array" },
+        "listItemColors": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerEmail", "allowedEmails", "clinicStartHour", "clinicEndHour", "createdAt", "updatedAt"]
+    },
+    "StaffMemberRecord": {
+      "title": "StaffMemberRecord",
+      "description": "Clinic staff member profile, credentials, role, and granular RBAC permissions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "maxLength": 120 },
+        "username": { "type": "string", "maxLength": 64 },
+        "password": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 120 },
+        "recoveryPin": { "type": "string", "maxLength": 32 },
+        "role": { "type": "string", "enum": ["admin", "doctor", "receptionist", "nurse", "accountant"] },
+        "jobTitle": { "type": "string", "maxLength": 120 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "branchName": { "type": "string", "maxLength": 120 },
+        "restrictedBranchId": { "type": "string", "maxLength": 128 },
+        "doctorId": { "type": "string", "maxLength": 128 },
+        "isDisabled": { "type": "boolean" },
+        "exemptFromAttendance": { "type": "boolean" },
+        "attendanceExemptDates": { "type": "array" },
+        "defaultUnitByDay": { "type": "object" },
+        "shiftStartTime": { "type": "string", "maxLength": 16 },
+        "shiftEndTime": { "type": "string", "maxLength": 16 },
+        "permissions": { "type": "object" },
+        "ownerEmail": { "type": "string", "maxLength": 120 },
+        "allowedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "role", "jobTitle", "phone", "permissions", "ownerEmail", "allowedEmails", "createdAt", "updatedAt"]
+    },
+    "DoctorRecord": {
+      "title": "DoctorRecord",
+      "description": "Clinic doctor profile.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "maxLength": 120 },
+        "specialty": { "type": "string", "maxLength": 200 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "color": { "type": "string", "maxLength": 24 },
+        "isDisabled": { "type": "boolean" },
+        "ownerEmail": { "type": "string", "maxLength": 120 },
+        "allowedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "specialty", "phone", "color", "ownerEmail", "allowedEmails", "createdAt", "updatedAt"]
+    },
+    "UnitRecord": {
+      "title": "UnitRecord",
+      "description": "Clinic branch or dental chair unit.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "maxLength": 120 },
+        "chairCount": { "type": "number" },
+        "description": { "type": "string", "maxLength": 500 },
+        "isDisabled": { "type": "boolean" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "allowedRadiusMeters": { "type": "number" },
+        "ownerEmail": { "type": "string", "maxLength": 120 },
+        "allowedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "chairCount", "description", "ownerEmail", "allowedEmails", "createdAt", "updatedAt"]
+    },
+    "ProcedureRecord": {
+      "title": "ProcedureRecord",
+      "description": "Dental procedure catalog item and default price.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "maxLength": 100 },
+        "defaultPrice": { "type": "number" },
+        "ownerEmail": { "type": "string", "maxLength": 120 },
+        "allowedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "category", "defaultPrice", "ownerEmail", "allowedEmails", "createdAt", "updatedAt"]
+    },
+    "ExpenseRecord": {
+      "title": "ExpenseRecord",
+      "description": "Clinic expense ledger entry.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "maxLength": 250 },
+        "category": { "type": "string", "maxLength": 64 },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "maxLength": 20 },
+        "unitId": { "type": "string", "maxLength": 128 },
+        "unitName": { "type": "string", "maxLength": 120 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "loggedBy": { "type": "string", "maxLength": 120 },
+        "ownerEmail": { "type": "string", "maxLength": 120 },
+        "allowedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "category", "amount", "date", "loggedBy", "ownerEmail", "allowedEmails", "createdAt", "updatedAt"]
+    },
+    "TaskRecord": {
+      "title": "TaskRecord",
+      "description": "Clinic team task.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "maxLength": 250 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "dueDate": { "type": "string", "maxLength": 20 },
+        "assignedTo": { "type": "string", "maxLength": 120 },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+        "recurrence": { "type": "string", "enum": ["once", "daily", "weekly", "monthly"] },
+        "isCompleted": { "type": "boolean" },
+        "adminCompleted": { "type": "boolean" },
+        "completedAt": { "type": "string", "maxLength": 40 },
+        "completedBy": { "type": "string", "maxLength": 120 },
+        "completedDates": { "type": "object" },
+        "ownerEmail": { "type": "string", "maxLength": 120 },
+        "allowedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "dueDate", "assignedTo", "priority", "recurrence", "isCompleted", "ownerEmail", "allowedEmails", "createdAt", "updatedAt"]
+    },
+    "AttendanceRecordDoc": {
+      "title": "AttendanceRecordDoc",
+      "description": "Staff clock-in and clock-out attendance record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 120 },
+        "unitId": { "type": "string", "maxLength": 128 },
+        "unitName": { "type": "string", "maxLength": 120 },
+        "date": { "type": "string", "maxLength": 20 },
+        "clockIn": { "type": "string", "maxLength": 16 },
+        "clockOut": { "type": "string", "maxLength": 16 },
+        "isManual": { "type": "boolean" },
+        "manualReason": { "type": "string", "maxLength": 300 },
+        "status": { "type": "string", "enum": ["active", "completed"] },
+        "ownerEmail": { "type": "string", "maxLength": 120 },
+        "allowedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "userName", "unitId", "unitName", "date", "clockIn", "status", "ownerEmail", "allowedEmails", "createdAt", "updatedAt"]
+    },
+    "PrescriptionRecord": {
+      "title": "PrescriptionRecord",
+      "description": "Issued medical prescription.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "prescriptionNumber": { "type": "string", "maxLength": 64 },
+        "patientId": { "type": "string", "maxLength": 128 },
+        "patientName": { "type": "string", "maxLength": 160 },
+        "patientAge": { "type": "number" },
+        "date": { "type": "string", "maxLength": 20 },
+        "doctorId": { "type": "string", "maxLength": 128 },
+        "doctorName": { "type": "string", "maxLength": 120 },
+        "diagnosis": { "type": "string", "maxLength": 400 },
+        "medications": { "type": "array" },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "ownerEmail": { "type": "string", "maxLength": 120 },
+        "allowedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "prescriptionNumber", "patientId", "patientName", "date", "doctorId", "doctorName", "medications", "ownerEmail", "allowedEmails", "createdAt", "updatedAt"]
+    },
+    "WhatsAppTemplateRecord": {
+      "title": "WhatsAppTemplateRecord",
+      "description": "WhatsApp automated reminder template.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "maxLength": 200 },
+        "triggerEvent": { "type": "string", "maxLength": 64 },
+        "timingOffsetMinutes": { "type": "number" },
+        "timingDirection": { "type": "string", "enum": ["at", "before", "after"] },
+        "timingValue": { "type": "number" },
+        "timingUnit": { "type": "string", "enum": ["minute", "hour", "day", "week", "month"] },
+        "procedureId": { "type": "string", "maxLength": 128 },
+        "procedureName": { "type": "string", "maxLength": 200 },
+        "messageTemplate": { "type": "string", "maxLength": 2000 },
+        "isActive": { "type": "boolean" },
+        "ownerEmail": { "type": "string", "maxLength": 120 },
+        "allowedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "triggerEvent", "timingOffsetMinutes", "messageTemplate", "isActive", "ownerEmail", "allowedEmails", "createdAt", "updatedAt"]
+    },
+    "WhatsAppAlertRecord": {
+      "title": "WhatsAppAlertRecord",
+      "description": "Queued WhatsApp message alert.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "patientId": { "type": "string", "maxLength": 128 },
+        "patientName": { "type": "string", "maxLength": 160 },
+        "patientPhone": { "type": "string", "maxLength": 40 },
+        "templateTitle": { "type": "string", "maxLength": 200 },
+        "renderedMessage": { "type": "string", "maxLength": 2500 },
+        "status": { "type": "string", "enum": ["pending", "opened", "sent", "dismissed"] },
+        "scheduledFor": { "type": "string", "maxLength": 40 },
+        "sentAt": { "type": "string", "maxLength": 64 },
+        "ownerEmail": { "type": "string", "maxLength": 120 },
+        "allowedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "patientId", "patientName", "patientPhone", "templateTitle", "renderedMessage", "status", "scheduledFor", "ownerEmail", "allowedEmails", "createdAt", "updatedAt"]
+    },
+    "SyncOverlayRecord": {
+      "title": "SyncOverlayRecord",
+      "description": "Cloud delta overlay document for patients, appointments, invoices, payments, and operations (either full payload or tombstone isDeleted=true).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "isDeleted": { "type": "boolean" },
+        "payload": { "type": "object" },
+        "ownerEmail": { "type": "string", "maxLength": 120 },
+        "allowedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "isDeleted", "ownerEmail", "allowedEmails", "createdAt", "updatedAt"]
+    },
+    "AuditLogRecord": {
+      "title": "AuditLogRecord",
+      "description": "Audit log entry recording mutations, diffs, and revert status.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "timestamp": { "type": "string", "maxLength": 64 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 120 },
+        "action": { "type": "string", "enum": ["add", "update", "delete", "status_change"] },
+        "entityType": { "type": "string", "enum": ["patient", "appointment", "invoice", "payment", "expense", "task", "procedure", "staff", "setting", "attendance"] },
+        "entityId": { "type": "string", "maxLength": 128 },
+        "entityName": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "previousData": { "type": "object" },
+        "newData": { "type": "object" },
+        "targetView": { "type": "string", "maxLength": 64 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "reverted": { "type": "boolean" },
+        "ownerEmail": { "type": "string", "maxLength": 120 },
+        "allowedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "timestamp", "userId", "userName", "action", "entityType", "entityId", "entityName", "description", "ownerEmail", "allowedEmails", "createdAt", "updatedAt"]
+    },
+    "PatientFollowUpLogRecord": {
+      "title": "PatientFollowUpLogRecord",
+      "description": "Patient follow-up status change history record with edit and revert support.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "patientId": { "type": "string", "maxLength": 128 },
+        "patientName": { "type": "string", "maxLength": 160 },
+        "patientPhone": { "type": "string", "maxLength": 40 },
+        "previousStatus": { "type": "string", "maxLength": 80 },
+        "newStatus": { "type": "string", "maxLength": 80 },
+        "changedBy": { "type": "string", "maxLength": 120 },
+        "changedById": { "type": "string", "maxLength": 128 },
+        "timestamp": { "type": "string", "maxLength": 64 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "audioDataUrl": { "type": "string", "maxLength": 400000 },
+        "audioDurationSeconds": { "type": "number" },
+        "feedbackOutcome": { "type": "string", "enum": ["done", "not_done"] },
+        "feedbackDate": { "type": "string", "maxLength": 24 },
+        "taskType": { "type": "string", "enum": ["feedback", "finished_work"] },
+        "finishedWorkAction": { "type": "string", "enum": ["finished", "unreachable", "not_interested", "postpone_week", "closed_file"] },
+        "finishedWorkAttempt": { "type": "number" },
+        "snoozeUntilDate": { "type": "string", "maxLength": 24 },
+        "actionDate": { "type": "string", "maxLength": 24 },
+        "reverted": { "type": "boolean" },
+        "revertedAt": { "type": "string", "maxLength": 64 },
+        "revertedBy": { "type": "string", "maxLength": 120 },
+        "ownerEmail": { "type": "string", "maxLength": 120 },
+        "allowedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "patientId", "patientName", "patientPhone", "previousStatus", "newStatus", "changedBy", "changedById", "timestamp", "ownerEmail", "allowedEmails", "createdAt", "updatedAt"]
+    },
+    "StaffAlertLogRecord": {
+      "title": "StaffAlertLogRecord",
+      "description": "Historical staff alert trigger and interaction log for admin monitoring.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "alertType": { "type": "string", "enum": ["appointment", "shift_start", "shift_end", "test"] },
+        "targetKey": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "message": { "type": "string", "maxLength": 1000 },
+        "patientId": { "type": "string", "maxLength": 128 },
+        "patientName": { "type": "string", "maxLength": 160 },
+        "appointmentId": { "type": "string", "maxLength": 128 },
+        "appointmentDate": { "type": "string", "maxLength": 24 },
+        "appointmentTime": { "type": "string", "maxLength": 24 },
+        "targetStaffIds": { "type": "array" },
+        "targetStaffNames": { "type": "array" },
+        "channel": { "type": "string", "enum": ["website_only", "mobile_and_website"] },
+        "status": { "type": "string", "enum": ["active", "snoozed", "resolved", "dismissed"] },
+        "triggeredAt": { "type": "string", "maxLength": 64 },
+        "lastUpdatedAt": { "type": "string", "maxLength": 64 },
+        "lastInteractionBy": { "type": "string", "maxLength": 120 },
+        "lastInteractionById": { "type": "string", "maxLength": 128 },
+        "lastInteractionLabel": { "type": "string", "maxLength": 200 },
+        "interactions": { "type": "array" },
+        "ownerEmail": { "type": "string", "maxLength": 120 },
+        "allowedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "alertType", "targetKey", "title", "message", "status", "triggeredAt", "lastUpdatedAt", "interactions", "ownerEmail", "allowedEmails", "createdAt", "updatedAt"]
+    },
+    "StaffCommentRecord": {
+      "title": "StaffCommentRecord",
+      "description": "Internal clinic staff comments and recurring guidance notes with optional expiry.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "staffId": { "type": "string", "maxLength": 128 },
+        "staffName": { "type": "string", "maxLength": 120 },
+        "content": { "type": "string", "maxLength": 2000 },
+        "repeatCount": { "type": "number" },
+        "history": { "type": "array" },
+        "createdBy": { "type": "string", "maxLength": 120 },
+        "isHidden": { "type": "boolean" },
+        "hiddenAt": { "type": "string", "maxLength": 64 },
+        "durationDays": { "type": ["number", "null"] },
+        "durationLabel": { "type": "string", "maxLength": 80 },
+        "expiresAt": { "type": ["string", "null"], "maxLength": 64 },
+        "ownerEmail": { "type": "string", "maxLength": 120 },
+        "allowedEmails": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "staffId", "staffName", "content", "repeatCount", "history", "createdBy", "ownerEmail", "allowedEmails", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/clinic_config/{configId}": {
+      "schema": { "$ref": "#/entities/ClinicConfig" },
+      "description": "Stores clinic working hours, weekday rules, referral sources, patient tags, and required fields."
+    },
+    "/staff_members/{staffId}": {
+      "schema": { "$ref": "#/entities/StaffMemberRecord" },
+      "description": "Stores clinic staff accounts, credentials, and granular RBAC permissions."
+    },
+    "/doctors/{doctorId}": {
+      "schema": { "$ref": "#/entities/DoctorRecord" },
+      "description": "Stores clinic doctors roster."
+    },
+    "/units/{unitId}": {
+      "schema": { "$ref": "#/entities/UnitRecord" },
+      "description": "Stores clinic units and chairs."
+    },
+    "/procedures/{procedureId}": {
+      "schema": { "$ref": "#/entities/ProcedureRecord" },
+      "description": "Stores dental procedure catalog and pricing."
+    },
+    "/expenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/ExpenseRecord" },
+      "description": "Stores clinic expenses."
+    },
+    "/tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/TaskRecord" },
+      "description": "Stores clinic team tasks."
+    },
+    "/attendance/{attendanceId}": {
+      "schema": { "$ref": "#/entities/AttendanceRecordDoc" },
+      "description": "Stores staff attendance records."
+    },
+    "/prescriptions/{prescriptionId}": {
+      "schema": { "$ref": "#/entities/PrescriptionRecord" },
+      "description": "Stores issued patient prescriptions."
+    },
+    "/whatsapp_templates/{templateId}": {
+      "schema": { "$ref": "#/entities/WhatsAppTemplateRecord" },
+      "description": "Stores automated WhatsApp message templates."
+    },
+    "/whatsapp_alerts/{alertId}": {
+      "schema": { "$ref": "#/entities/WhatsAppAlertRecord" },
+      "description": "Stores queued/sent WhatsApp alerts."
+    },
+    "/patients_sync/{patientId}": {
+      "schema": { "$ref": "#/entities/SyncOverlayRecord" },
+      "description": "Stores created, modified, or deleted patient records synced over the baseline clinic archive."
+    },
+    "/appointments_sync/{appointmentId}": {
+      "schema": { "$ref": "#/entities/SyncOverlayRecord" },
+      "description": "Stores created, modified, or deleted appointment records synced over the baseline clinic archive."
+    },
+    "/invoices_sync/{invoiceId}": {
+      "schema": { "$ref": "#/entities/SyncOverlayRecord" },
+      "description": "Stores created, modified, or deleted invoice records synced over the baseline clinic archive."
+    },
+    "/payments_sync/{paymentId}": {
+      "schema": { "$ref": "#/entities/SyncOverlayRecord" },
+      "description": "Stores created, modified, or deleted payment records synced over the baseline clinic archive."
+    },
+    "/operations_sync/{operationId}": {
+      "schema": { "$ref": "#/entities/SyncOverlayRecord" },
+      "description": "Stores created, modified, or deleted dental operation records synced over the baseline clinic archive."
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLogRecord" },
+      "description": "Stores chronological audit trail logs and revert state across clinic devices."
+    },
+    "/patient_follow_up_logs/{logId}": {
+      "schema": { "$ref": "#/entities/PatientFollowUpLogRecord" },
+      "description": "Stores patient CRM follow-up status transitions and revert history."
+    },
+    "/staff_alert_logs/{logId}": {
+      "schema": { "$ref": "#/entities/StaffAlertLogRecord" },
+      "description": "Stores historical staff alert records and staff interaction trails."
+    },
+    "/staff_comments/{commentId}": {
+      "schema": { "$ref": "#/entities/StaffCommentRecord" },
+      "description": "Stores internal staff comments, repeat counts, and visibility duration across devices."
+    }
+  }
+}

@@ -101,7 +101,13 @@ export const WhatsAppView: React.FC = () => {
   const sortedActiveQueueAlerts = useMemo(() => {
     const getTimestamp = (value: string | undefined): number => {
       if (!value) return Number.NaN;
-      const normalized = value.trim().replace(' ', 'T');
+      const normalized = value.trim();
+      // scheduledFor values without a timezone are clinic-local Cairo dates/times.
+      const localDateTime = normalized.match(/^(\\d{4})-(\\d{2})-(\\d{2})(?:[ T](\\d{2}):(\\d{2}))?$/);
+      if (localDateTime) {
+        const [, year, month, day, hour = '0', minute = '0'] = localDateTime;
+        return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute)).getTime();
+      }
       const timestamp = Date.parse(normalized);
       return Number.isFinite(timestamp) ? timestamp : Number.NaN;
     };

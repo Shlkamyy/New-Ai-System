@@ -103,7 +103,7 @@ export const WhatsAppView: React.FC = () => {
       if (!value) return Number.NaN;
       const normalized = value.trim();
       // scheduledFor values without a timezone are clinic-local Cairo dates/times.
-      const localDateTime = normalized.match(/^(\\d{4})-(\\d{2})-(\\d{2})(?:[ T](\\d{2}):(\\d{2}))?$/);
+      const localDateTime = normalized.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?$/);
       if (localDateTime) {
         const [, year, month, day, hour = '0', minute = '0'] = localDateTime;
         return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute)).getTime();

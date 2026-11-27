@@ -76,7 +76,7 @@ export const WhatsAppView: React.FC = () => {
   const effectiveTab = isAdmin ? activeTab : 'queue';
 
   const [historyFilter, setHistoryFilter] = useState<'all' | 'sent' | 'dismissed'>('all');
-  const [queueSort, setQueueSort] = useState<'due_asc' | 'due_desc' | 'created_asc' | 'created_desc'>('due_asc');
+  const [queueSort, setQueueSort] = useState<'due_asc' | 'due_desc' | 'created_asc' | 'created_desc'>('due_desc');
   const [registerWaPatientId, setRegisterWaPatientId] = useState<string | null>(null);
   const registerWaPatient = useMemo(
     () => (registerWaPatientId ? patients.find(p => p.id === registerWaPatientId) || null : null),
